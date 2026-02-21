@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-vision-detect-faces"
+description = "Enables the vision_detect_faces command without any pre-configured scope."
+commands.allow = ["vision_detect_faces"]
+
+[[permission]]
+identifier = "deny-vision-detect-faces"
+description = "Denies the vision_detect_faces command without any pre-configured scope."
+commands.deny = ["vision_detect_faces"]

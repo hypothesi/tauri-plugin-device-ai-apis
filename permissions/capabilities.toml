@@ -1,0 +1,6 @@
+# Capability detection permissions for the Device AI plugin
+
+[[permission]]
+identifier = "allow-get-capabilities"
+description = "Enables querying available AI capabilities on the current platform"
+commands.allow = ["get_capabilities"]

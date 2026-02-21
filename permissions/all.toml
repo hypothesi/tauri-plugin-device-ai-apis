@@ -1,0 +1,6 @@
+# All permissions for the Device AI plugin
+
+[[set]]
+identifier = "all"
+description = "All Device AI plugin capabilities"
+permissions = ["allow-get-capabilities", "speech-all", "vision-all", "text-all", "llm-all"]

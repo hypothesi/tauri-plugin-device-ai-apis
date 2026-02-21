@@ -1,0 +1,67 @@
+# LLM-related permissions for the Device AI plugin
+
+[[permission]]
+identifier = "allow-llm-check-availability"
+description = "Check if an on-device language model is available"
+commands.allow = ["llm_check_availability"]
+
+[[permission]]
+identifier = "allow-llm-get-model-info"
+description = "Get language model information"
+commands.allow = ["llm_get_model_info"]
+
+[[permission]]
+identifier = "allow-llm-generate"
+description = "Generate text using the on-device language model"
+commands.allow = ["llm_generate"]
+
+[[permission]]
+identifier = "allow-llm-generate-stream"
+description = "Stream text generation from the on-device language model"
+commands.allow = ["llm_generate_stream"]
+
+[[permission]]
+identifier = "allow-llm-create-session"
+description = "Create a multi-turn language model session"
+commands.allow = ["llm_create_session"]
+
+[[permission]]
+identifier = "allow-llm-session-send"
+description = "Send a message in a language model session"
+commands.allow = ["llm_session_send"]
+
+[[permission]]
+identifier = "allow-llm-session-send-stream"
+description = "Stream a response in a language model session"
+commands.allow = ["llm_session_send_stream"]
+
+[[permission]]
+identifier = "allow-llm-destroy-session"
+description = "Destroy a language model session"
+commands.allow = ["llm_destroy_session"]
+
+[[permission]]
+identifier = "allow-llm-summarize"
+description = "Summarize text using the on-device language model"
+commands.allow = ["llm_summarize"]
+
+[[permission]]
+identifier = "allow-llm-rewrite"
+description = "Rewrite text using the on-device language model"
+commands.allow = ["llm_rewrite"]
+
+[[set]]
+identifier = "llm-all"
+description = "Full language model capabilities"
+permissions = [
+  "allow-llm-check-availability",
+  "allow-llm-get-model-info",
+  "allow-llm-generate",
+  "allow-llm-generate-stream",
+  "allow-llm-create-session",
+  "allow-llm-session-send",
+  "allow-llm-session-send-stream",
+  "allow-llm-destroy-session",
+  "allow-llm-summarize",
+  "allow-llm-rewrite",
+]

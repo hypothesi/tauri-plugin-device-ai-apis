@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "tauri_plugin_device_ai_apis",
+  "project_id": "5f423bac-f21b-4c36-9e28-ff3c087054d7"
+}

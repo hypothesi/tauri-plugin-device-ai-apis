@@ -1,0 +1,31 @@
+# Vision-related permissions for the Device AI plugin
+
+[[permission]]
+identifier = "allow-vision-recognize-text"
+description = "Enables text recognition (OCR) in images"
+commands.allow = ["vision_recognize_text"]
+
+[[permission]]
+identifier = "allow-vision-detect-barcodes"
+description = "Enables barcode and QR code detection in images"
+commands.allow = ["vision_detect_barcodes"]
+
+[[permission]]
+identifier = "allow-vision-detect-faces"
+description = "Enables face detection in images"
+commands.allow = ["vision_detect_faces"]
+
+[[permission]]
+identifier = "allow-vision-classify-image"
+description = "Enables image classification/labeling"
+commands.allow = ["vision_classify_image"]
+
+[[set]]
+identifier = "vision-all"
+description = "Full vision capabilities"
+permissions = [
+  "allow-vision-recognize-text",
+  "allow-vision-detect-barcodes",
+  "allow-vision-detect-faces",
+  "allow-vision-classify-image",
+]

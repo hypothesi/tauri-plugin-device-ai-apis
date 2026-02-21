@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-llm-summarize"
+description = "Enables the llm_summarize command without any pre-configured scope."
+commands.allow = ["llm_summarize"]
+
+[[permission]]
+identifier = "deny-llm-summarize"
+description = "Denies the llm_summarize command without any pre-configured scope."
+commands.deny = ["llm_summarize"]

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-llm-rewrite"
+description = "Enables the llm_rewrite command without any pre-configured scope."
+commands.allow = ["llm_rewrite"]
+
+[[permission]]
+identifier = "deny-llm-rewrite"
+description = "Denies the llm_rewrite command without any pre-configured scope."
+commands.deny = ["llm_rewrite"]

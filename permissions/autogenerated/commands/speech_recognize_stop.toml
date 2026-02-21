@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-speech-recognize-stop"
+description = "Enables the speech_recognize_stop command without any pre-configured scope."
+commands.allow = ["speech_recognize_stop"]
+
+[[permission]]
+identifier = "deny-speech-recognize-stop"
+description = "Denies the speech_recognize_stop command without any pre-configured scope."
+commands.deny = ["speech_recognize_stop"]

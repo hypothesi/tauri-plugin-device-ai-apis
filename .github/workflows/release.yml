@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-npm:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify signed tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace("refs/tags/", "");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const ref = await github.request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
+              owner,
+              repo,
+              ref: `tags/${tag}`,
+            });
+
+            if (ref.data.object.type !== "tag") {
+              core.setFailed(`Tag ${tag} must be an annotated signed tag (lightweight tags are not allowed).`);
+              return;
+            }
+
+            const tagObject = await github.request("GET /repos/{owner}/{repo}/git/tags/{tag_sha}", {
+              owner,
+              repo,
+              tag_sha: ref.data.object.sha,
+            });
+
+            const verification = tagObject.data.verification;
+            if (!verification?.verified) {
+              core.setFailed(`Tag ${tag} is not a verified signed tag. Reason: ${verification?.reason ?? "unknown"}`);
+              return;
+            }
+
+            core.info(`Verified signed tag ${tag} by ${tagObject.data.tagger?.name ?? "unknown"}.`);
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Use latest npm CLI
+        run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --access public

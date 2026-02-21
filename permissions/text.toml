@@ -1,0 +1,16 @@
+# Text processing permissions for the Device AI plugin
+
+[[permission]]
+identifier = "allow-text-identify-language"
+description = "Enables language identification of text"
+commands.allow = ["text_identify_language"]
+
+[[permission]]
+identifier = "allow-text-translate"
+description = "Enables text translation between languages"
+commands.allow = ["text_translate"]
+
+[[set]]
+identifier = "text-all"
+description = "Full text processing capabilities"
+permissions = ["allow-text-identify-language", "allow-text-translate"]

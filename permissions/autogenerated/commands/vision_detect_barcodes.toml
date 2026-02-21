@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-vision-detect-barcodes"
+description = "Enables the vision_detect_barcodes command without any pre-configured scope."
+commands.allow = ["vision_detect_barcodes"]
+
+[[permission]]
+identifier = "deny-vision-detect-barcodes"
+description = "Denies the vision_detect_barcodes command without any pre-configured scope."
+commands.deny = ["vision_detect_barcodes"]

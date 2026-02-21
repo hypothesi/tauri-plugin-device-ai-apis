@@ -1,0 +1,3 @@
+[default]
+description = "Default permissions for the Device AI plugin. Includes capability detection and speech synthesis."
+permissions = ["allow-get-capabilities", "allow-speech-synthesize", "allow-speech-get-voices"]

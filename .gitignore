@@ -1,0 +1,36 @@
+/.vs
+.DS_Store
+.Thumbs.db
+*.sublime*
+.idea/
+debug.log
+.vscode/settings.json
+yarn.lock
+
+/.tauri
+/target
+Cargo.lock
+node_modules/
+
+dist-js
+dist
+
+# AI
+
+specs
+
+.aix/tmp
+.claude
+.codex
+
+.github/instructions
+.github/prompts
+.github/skills
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads
+
+.fallow

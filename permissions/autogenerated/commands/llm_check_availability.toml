@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-llm-check-availability"
+description = "Enables the llm_check_availability command without any pre-configured scope."
+commands.allow = ["llm_check_availability"]
+
+[[permission]]
+identifier = "deny-llm-check-availability"
+description = "Denies the llm_check_availability command without any pre-configured scope."
+commands.deny = ["llm_check_availability"]

@@ -1,0 +1,56 @@
+[package]
+name = "device-ai"
+version = "0.1.0"
+authors = ["Hypothesi"]
+description = "Tauri-agnostic Rust library for native on-device AI APIs"
+edition = "2021"
+rust-version = "1.77.2"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/hypothesi/tauri-plugin-device-ai-apis"
+keywords = ["ai", "speech", "vision", "llm", "ocr"]
+categories = ["api-bindings", "multimedia"]
+readme = "README.md"
+
+[features]
+default = ["speech", "vision", "text", "llm"]
+speech = []
+vision = []
+text = []
+llm = []
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+base64 = "0.22"
+uuid = { version = "1.0", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Foundation",
+  "Foundation_Collections",
+  "Storage_Streams",
+  "Media_SpeechRecognition",
+  "Media_SpeechSynthesis",
+  "Media_Ocr",
+  "Globalization",
+  "Graphics_Imaging",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", features = ["exception", "catch-all"] }
+objc2-foundation = { version = "0.3", features = [
+  "NSString",
+  "NSArray",
+  "NSData",
+  "NSError",
+  "NSDictionary",
+  "NSValue",
+] }
+objc2-natural-language = { version = "0.3", features = ["NLLanguage", "NLLanguageRecognizer"] }
+objc2-app-kit = { version = "0.3", features = ["NSSpeechSynthesizer"] }
+objc2-speech = "0.3"
+objc2-av-foundation = "0.3"
+objc2-vision = "0.3"
+objc2-core-image = "0.3"
+block2 = "0.6"

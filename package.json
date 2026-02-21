@@ -1,0 +1,54 @@
+{
+  "name": "@hypothesi/tauri-plugin-device-ai-apis",
+  "version": "0.1.0",
+  "description": "Tauri plugin for on-device AI APIs: speech recognition, text-to-speech, OCR, barcode detection, face detection, image classification, and language identification.",
+  "author": "Hypothesi",
+  "keywords": [
+    "tauri",
+    "tauri-plugin",
+    "tauri-v2",
+    "ai",
+    "on-device-ai",
+    "speech-recognition",
+    "text-to-speech",
+    "ocr",
+    "barcode-detection",
+    "face-detection",
+    "image-classification",
+    "language-identification"
+  ],
+  "files": [
+    "dist-js",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./dist-js/index.cjs",
+  "module": "./dist-js/index.js",
+  "types": "./dist-js/index.d.ts",
+  "exports": {
+    "types": "./dist-js/index.d.ts",
+    "import": "./dist-js/index.js",
+    "require": "./dist-js/index.cjs"
+  },
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "cd examples/tauri-app && npm run tauri dev",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build",
+    "pretest": "npm run build",
+    "standards:fix": "cargo fmt && oxlint --fix . && oxfmt .",
+    "standards": "cargo fmt --all -- --check && cargo clippy -- -D warnings && oxlint ."
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.10.1"
+  },
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^12.0.0",
+    "husky": "9.1.7",
+    "oxfmt": "^0.32.0",
+    "oxlint": "^1.47.0",
+    "rollup": "^4.9.6",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  }
+}

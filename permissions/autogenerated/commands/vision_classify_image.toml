@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-vision-classify-image"
+description = "Enables the vision_classify_image command without any pre-configured scope."
+commands.allow = ["vision_classify_image"]
+
+[[permission]]
+identifier = "deny-vision-classify-image"
+description = "Denies the vision_classify_image command without any pre-configured scope."
+commands.deny = ["vision_classify_image"]

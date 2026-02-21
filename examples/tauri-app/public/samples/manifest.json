@@ -1,0 +1,45 @@
+{
+  "samples": [
+    {
+      "type": "face-detection",
+      "file": "face_detection.jpg",
+      "description": "Image of President Barack Obama",
+      "expected": {
+        "minFaces": 1
+      }
+    },
+    {
+      "type": "ocr",
+      "file": "ocr_text.png",
+      "description": "Simple text image",
+      "expected": {
+        "contains": ["Tesseract.js"]
+      }
+    },
+    {
+      "type": "barcode",
+      "file": "barcode.png",
+      "description": "QR Code pointing to Tauri website",
+      "expected": {
+        "format": "qr_code",
+        "rawValue": "https://tauri.app"
+      }
+    },
+    {
+      "type": "image-classification",
+      "file": "classification.jpg",
+      "description": "Dog image",
+      "expected": {
+        "className": "dog"
+      }
+    },
+    {
+      "type": "speech-recognition",
+      "file": "speech.wav",
+      "description": "Harvard Sentences",
+      "expected": {
+        "text": "The birch canoe slid on the smooth planks."
+      }
+    }
+  ]
+}

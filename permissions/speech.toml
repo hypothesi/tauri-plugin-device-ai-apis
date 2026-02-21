@@ -1,0 +1,45 @@
+# Speech-related permissions for the Device AI plugin
+
+[[permission]]
+identifier = "allow-speech-recognize"
+description = "Enables one-shot speech recognition"
+commands.allow = ["speech_recognize"]
+
+[[permission]]
+identifier = "allow-speech-recognize-start"
+description = "Enables starting streaming speech recognition"
+commands.allow = ["speech_recognize_start"]
+
+[[permission]]
+identifier = "allow-speech-recognize-stop"
+description = "Enables stopping streaming speech recognition"
+commands.allow = ["speech_recognize_stop"]
+
+[[permission]]
+identifier = "allow-speech-synthesize"
+description = "Enables text-to-speech synthesis"
+commands.allow = ["speech_synthesize"]
+
+[[permission]]
+identifier = "allow-speech-get-voices"
+description = "Enables getting available voices for speech synthesis"
+commands.allow = ["speech_get_voices"]
+
+[[set]]
+identifier = "speech-recognition"
+description = "Full speech recognition capabilities (requires microphone permission)"
+permissions = [
+  "allow-speech-recognize",
+  "allow-speech-recognize-start",
+  "allow-speech-recognize-stop",
+]
+
+[[set]]
+identifier = "speech-synthesis"
+description = "Full speech synthesis capabilities"
+permissions = ["allow-speech-synthesize", "allow-speech-get-voices"]
+
+[[set]]
+identifier = "speech-all"
+description = "Full speech capabilities (recognition and synthesis)"
+permissions = ["speech-recognition", "speech-synthesis"]

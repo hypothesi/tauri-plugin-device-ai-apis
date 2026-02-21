@@ -1,0 +1,744 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PermissionFile",
+  "description": "Permission file that can define a default permission, a set of permissions or a list of inlined permissions.",
+  "type": "object",
+  "properties": {
+    "default": {
+      "description": "The default permission set for the plugin",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DefaultPermission"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "set": {
+      "description": "A list of permissions sets defined",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PermissionSet"
+      }
+    },
+    "permission": {
+      "description": "A list of inlined permissions",
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Permission"
+      }
+    }
+  },
+  "definitions": {
+    "DefaultPermission": {
+      "description": "The default permission set of the plugin.\n\nWorks similarly to a permission with the \"default\" identifier.",
+      "type": "object",
+      "required": [
+        "permissions"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PermissionSet": {
+      "description": "A set of direct permissions grouped together under a new name.",
+      "type": "object",
+      "required": [
+        "description",
+        "identifier",
+        "permissions"
+      ],
+      "properties": {
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does.",
+          "type": "string"
+        },
+        "permissions": {
+          "description": "All permissions this set contains.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PermissionKind"
+          }
+        }
+      }
+    },
+    "Permission": {
+      "description": "Descriptions of explicit privileges of commands.\n\nIt can enable commands to be accessible in the frontend of the application.\n\nIf the scope is defined it can be used to fine grain control the access of individual or multiple commands.",
+      "type": "object",
+      "required": [
+        "identifier"
+      ],
+      "properties": {
+        "version": {
+          "description": "The version of the permission.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1.0
+        },
+        "identifier": {
+          "description": "A unique identifier for the permission.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what the permission does. Tauri internal convention is to use `<h4>` headings in markdown content for Tauri documentation generation purposes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commands": {
+          "description": "Allowed or denied commands when using this permission.",
+          "default": {
+            "allow": [],
+            "deny": []
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/Commands"
+            }
+          ]
+        },
+        "scope": {
+          "description": "Allowed or denied scoped when using this permission.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Scopes"
+            }
+          ]
+        },
+        "platforms": {
+          "description": "Target platforms this permission applies. By default all platforms are affected by this permission.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Target"
+          }
+        }
+      }
+    },
+    "Commands": {
+      "description": "Allowed and denied commands inside a permission.\n\nIf two commands clash inside of `allow` and `deny`, it should be denied by default.",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Allowed command.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deny": {
+          "description": "Denied command, which takes priority.",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "Scopes": {
+      "description": "An argument for fine grained behavior control of Tauri commands.\n\nIt can be of any serde serializable type and is used to allow or prevent certain actions inside a Tauri command. The configured scope is passed to the command and will be enforced by the command implementation.\n\n## Example\n\n```json { \"allow\": [{ \"path\": \"$HOME/**\" }], \"deny\": [{ \"path\": \"$HOME/secret.txt\" }] } ```",
+      "type": "object",
+      "properties": {
+        "allow": {
+          "description": "Data that defines what is allowed by the scope.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        "deny": {
+          "description": "Data that defines what is denied by the scope. This should be prioritized by validation logic.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      }
+    },
+    "Value": {
+      "description": "All supported ACL values.",
+      "anyOf": [
+        {
+          "description": "Represents a null JSON value.",
+          "type": "null"
+        },
+        {
+          "description": "Represents a [`bool`].",
+          "type": "boolean"
+        },
+        {
+          "description": "Represents a valid ACL [`Number`].",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Number"
+            }
+          ]
+        },
+        {
+          "description": "Represents a [`String`].",
+          "type": "string"
+        },
+        {
+          "description": "Represents a list of other [`Value`]s.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Value"
+          }
+        },
+        {
+          "description": "Represents a map of [`String`] keys to [`Value`]s.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Value"
+          }
+        }
+      ]
+    },
+    "Number": {
+      "description": "A valid ACL number.",
+      "anyOf": [
+        {
+          "description": "Represents an [`i64`].",
+          "type": "integer",
+          "format": "int64"
+        },
+        {
+          "description": "Represents a [`f64`].",
+          "type": "number",
+          "format": "double"
+        }
+      ]
+    },
+    "Target": {
+      "description": "Platform target.",
+      "oneOf": [
+        {
+          "description": "MacOS.",
+          "type": "string",
+          "enum": [
+            "macOS"
+          ]
+        },
+        {
+          "description": "Windows.",
+          "type": "string",
+          "enum": [
+            "windows"
+          ]
+        },
+        {
+          "description": "Linux.",
+          "type": "string",
+          "enum": [
+            "linux"
+          ]
+        },
+        {
+          "description": "Android.",
+          "type": "string",
+          "enum": [
+            "android"
+          ]
+        },
+        {
+          "description": "iOS.",
+          "type": "string",
+          "enum": [
+            "iOS"
+          ]
+        }
+      ]
+    },
+    "PermissionKind": {
+      "type": "string",
+      "oneOf": [
+        {
+          "description": "All Device AI plugin capabilities\n#### This permission set includes:\n\n- `allow-get-capabilities`\n- `speech-all`\n- `vision-all`\n- `text-all`\n- `llm-all`",
+          "type": "string",
+          "const": "all",
+          "markdownDescription": "All Device AI plugin capabilities\n#### This permission set includes:\n\n- `allow-get-capabilities`\n- `speech-all`\n- `vision-all`\n- `text-all`\n- `llm-all`"
+        },
+        {
+          "description": "Enables the get_capabilities command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-capabilities",
+          "markdownDescription": "Enables the get_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_capabilities command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-capabilities",
+          "markdownDescription": "Denies the get_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_check_availability command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-check-availability",
+          "markdownDescription": "Enables the llm_check_availability command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_check_availability command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-check-availability",
+          "markdownDescription": "Denies the llm_check_availability command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_create_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-create-session",
+          "markdownDescription": "Enables the llm_create_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_create_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-create-session",
+          "markdownDescription": "Denies the llm_create_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_destroy_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-destroy-session",
+          "markdownDescription": "Enables the llm_destroy_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_destroy_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-destroy-session",
+          "markdownDescription": "Denies the llm_destroy_session command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_generate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-generate",
+          "markdownDescription": "Enables the llm_generate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_generate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-generate",
+          "markdownDescription": "Denies the llm_generate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_generate_stream command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-generate-stream",
+          "markdownDescription": "Enables the llm_generate_stream command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_generate_stream command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-generate-stream",
+          "markdownDescription": "Denies the llm_generate_stream command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_get_model_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-get-model-info",
+          "markdownDescription": "Enables the llm_get_model_info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_get_model_info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-get-model-info",
+          "markdownDescription": "Denies the llm_get_model_info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_rewrite command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-rewrite",
+          "markdownDescription": "Enables the llm_rewrite command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_rewrite command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-rewrite",
+          "markdownDescription": "Denies the llm_rewrite command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_session_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-session-send",
+          "markdownDescription": "Enables the llm_session_send command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_session_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-session-send",
+          "markdownDescription": "Denies the llm_session_send command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_session_send_stream command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-session-send-stream",
+          "markdownDescription": "Enables the llm_session_send_stream command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_session_send_stream command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-session-send-stream",
+          "markdownDescription": "Denies the llm_session_send_stream command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the llm_summarize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-llm-summarize",
+          "markdownDescription": "Enables the llm_summarize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the llm_summarize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-llm-summarize",
+          "markdownDescription": "Denies the llm_summarize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the speech_get_voices command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speech-get-voices",
+          "markdownDescription": "Enables the speech_get_voices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speech_get_voices command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speech-get-voices",
+          "markdownDescription": "Denies the speech_get_voices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the speech_recognize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speech-recognize",
+          "markdownDescription": "Enables the speech_recognize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speech_recognize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speech-recognize",
+          "markdownDescription": "Denies the speech_recognize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the speech_recognize_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speech-recognize-start",
+          "markdownDescription": "Enables the speech_recognize_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speech_recognize_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speech-recognize-start",
+          "markdownDescription": "Denies the speech_recognize_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the speech_recognize_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speech-recognize-stop",
+          "markdownDescription": "Enables the speech_recognize_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speech_recognize_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speech-recognize-stop",
+          "markdownDescription": "Denies the speech_recognize_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the speech_synthesize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-speech-synthesize",
+          "markdownDescription": "Enables the speech_synthesize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the speech_synthesize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-speech-synthesize",
+          "markdownDescription": "Denies the speech_synthesize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the text_identify_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-text-identify-language",
+          "markdownDescription": "Enables the text_identify_language command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the text_identify_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-text-identify-language",
+          "markdownDescription": "Denies the text_identify_language command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the text_translate command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-text-translate",
+          "markdownDescription": "Enables the text_translate command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the text_translate command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-text-translate",
+          "markdownDescription": "Denies the text_translate command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vision_classify_image command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vision-classify-image",
+          "markdownDescription": "Enables the vision_classify_image command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vision_classify_image command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vision-classify-image",
+          "markdownDescription": "Denies the vision_classify_image command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vision_detect_barcodes command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vision-detect-barcodes",
+          "markdownDescription": "Enables the vision_detect_barcodes command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vision_detect_barcodes command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vision-detect-barcodes",
+          "markdownDescription": "Denies the vision_detect_barcodes command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vision_detect_faces command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vision-detect-faces",
+          "markdownDescription": "Enables the vision_detect_faces command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vision_detect_faces command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vision-detect-faces",
+          "markdownDescription": "Denies the vision_detect_faces command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the vision_recognize_text command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-vision-recognize-text",
+          "markdownDescription": "Enables the vision_recognize_text command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the vision_recognize_text command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-vision-recognize-text",
+          "markdownDescription": "Denies the vision_recognize_text command without any pre-configured scope."
+        },
+        {
+          "description": "Enables querying available AI capabilities on the current platform",
+          "type": "string",
+          "const": "allow-get-capabilities",
+          "markdownDescription": "Enables querying available AI capabilities on the current platform"
+        },
+        {
+          "description": "Default permissions for the Device AI plugin. Includes capability detection and speech synthesis.\n#### This default permission set includes:\n\n- `allow-get-capabilities`\n- `allow-speech-synthesize`\n- `allow-speech-get-voices`",
+          "type": "string",
+          "const": "default",
+          "markdownDescription": "Default permissions for the Device AI plugin. Includes capability detection and speech synthesis.\n#### This default permission set includes:\n\n- `allow-get-capabilities`\n- `allow-speech-synthesize`\n- `allow-speech-get-voices`"
+        },
+        {
+          "description": "Full language model capabilities\n#### This permission set includes:\n\n- `allow-llm-check-availability`\n- `allow-llm-get-model-info`\n- `allow-llm-generate`\n- `allow-llm-generate-stream`\n- `allow-llm-create-session`\n- `allow-llm-session-send`\n- `allow-llm-session-send-stream`\n- `allow-llm-destroy-session`\n- `allow-llm-summarize`\n- `allow-llm-rewrite`",
+          "type": "string",
+          "const": "llm-all",
+          "markdownDescription": "Full language model capabilities\n#### This permission set includes:\n\n- `allow-llm-check-availability`\n- `allow-llm-get-model-info`\n- `allow-llm-generate`\n- `allow-llm-generate-stream`\n- `allow-llm-create-session`\n- `allow-llm-session-send`\n- `allow-llm-session-send-stream`\n- `allow-llm-destroy-session`\n- `allow-llm-summarize`\n- `allow-llm-rewrite`"
+        },
+        {
+          "description": "Check if an on-device language model is available",
+          "type": "string",
+          "const": "allow-llm-check-availability",
+          "markdownDescription": "Check if an on-device language model is available"
+        },
+        {
+          "description": "Get language model information",
+          "type": "string",
+          "const": "allow-llm-get-model-info",
+          "markdownDescription": "Get language model information"
+        },
+        {
+          "description": "Generate text using the on-device language model",
+          "type": "string",
+          "const": "allow-llm-generate",
+          "markdownDescription": "Generate text using the on-device language model"
+        },
+        {
+          "description": "Stream text generation from the on-device language model",
+          "type": "string",
+          "const": "allow-llm-generate-stream",
+          "markdownDescription": "Stream text generation from the on-device language model"
+        },
+        {
+          "description": "Create a multi-turn language model session",
+          "type": "string",
+          "const": "allow-llm-create-session",
+          "markdownDescription": "Create a multi-turn language model session"
+        },
+        {
+          "description": "Send a message in a language model session",
+          "type": "string",
+          "const": "allow-llm-session-send",
+          "markdownDescription": "Send a message in a language model session"
+        },
+        {
+          "description": "Stream a response in a language model session",
+          "type": "string",
+          "const": "allow-llm-session-send-stream",
+          "markdownDescription": "Stream a response in a language model session"
+        },
+        {
+          "description": "Destroy a language model session",
+          "type": "string",
+          "const": "allow-llm-destroy-session",
+          "markdownDescription": "Destroy a language model session"
+        },
+        {
+          "description": "Summarize text using the on-device language model",
+          "type": "string",
+          "const": "allow-llm-summarize",
+          "markdownDescription": "Summarize text using the on-device language model"
+        },
+        {
+          "description": "Rewrite text using the on-device language model",
+          "type": "string",
+          "const": "allow-llm-rewrite",
+          "markdownDescription": "Rewrite text using the on-device language model"
+        },
+        {
+          "description": "Full speech recognition capabilities (requires microphone permission)\n#### This permission set includes:\n\n- `allow-speech-recognize`\n- `allow-speech-recognize-start`\n- `allow-speech-recognize-stop`",
+          "type": "string",
+          "const": "speech-recognition",
+          "markdownDescription": "Full speech recognition capabilities (requires microphone permission)\n#### This permission set includes:\n\n- `allow-speech-recognize`\n- `allow-speech-recognize-start`\n- `allow-speech-recognize-stop`"
+        },
+        {
+          "description": "Full speech synthesis capabilities\n#### This permission set includes:\n\n- `allow-speech-synthesize`\n- `allow-speech-get-voices`",
+          "type": "string",
+          "const": "speech-synthesis",
+          "markdownDescription": "Full speech synthesis capabilities\n#### This permission set includes:\n\n- `allow-speech-synthesize`\n- `allow-speech-get-voices`"
+        },
+        {
+          "description": "Full speech capabilities (recognition and synthesis)\n#### This permission set includes:\n\n- `speech-recognition`\n- `speech-synthesis`",
+          "type": "string",
+          "const": "speech-all",
+          "markdownDescription": "Full speech capabilities (recognition and synthesis)\n#### This permission set includes:\n\n- `speech-recognition`\n- `speech-synthesis`"
+        },
+        {
+          "description": "Enables one-shot speech recognition",
+          "type": "string",
+          "const": "allow-speech-recognize",
+          "markdownDescription": "Enables one-shot speech recognition"
+        },
+        {
+          "description": "Enables starting streaming speech recognition",
+          "type": "string",
+          "const": "allow-speech-recognize-start",
+          "markdownDescription": "Enables starting streaming speech recognition"
+        },
+        {
+          "description": "Enables stopping streaming speech recognition",
+          "type": "string",
+          "const": "allow-speech-recognize-stop",
+          "markdownDescription": "Enables stopping streaming speech recognition"
+        },
+        {
+          "description": "Enables text-to-speech synthesis",
+          "type": "string",
+          "const": "allow-speech-synthesize",
+          "markdownDescription": "Enables text-to-speech synthesis"
+        },
+        {
+          "description": "Enables getting available voices for speech synthesis",
+          "type": "string",
+          "const": "allow-speech-get-voices",
+          "markdownDescription": "Enables getting available voices for speech synthesis"
+        },
+        {
+          "description": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-translate`",
+          "type": "string",
+          "const": "text-all",
+          "markdownDescription": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-translate`"
+        },
+        {
+          "description": "Enables language identification of text",
+          "type": "string",
+          "const": "allow-text-identify-language",
+          "markdownDescription": "Enables language identification of text"
+        },
+        {
+          "description": "Enables text translation between languages",
+          "type": "string",
+          "const": "allow-text-translate",
+          "markdownDescription": "Enables text translation between languages"
+        },
+        {
+          "description": "Full vision capabilities\n#### This permission set includes:\n\n- `allow-vision-recognize-text`\n- `allow-vision-detect-barcodes`\n- `allow-vision-detect-faces`\n- `allow-vision-classify-image`",
+          "type": "string",
+          "const": "vision-all",
+          "markdownDescription": "Full vision capabilities\n#### This permission set includes:\n\n- `allow-vision-recognize-text`\n- `allow-vision-detect-barcodes`\n- `allow-vision-detect-faces`\n- `allow-vision-classify-image`"
+        },
+        {
+          "description": "Enables text recognition (OCR) in images",
+          "type": "string",
+          "const": "allow-vision-recognize-text",
+          "markdownDescription": "Enables text recognition (OCR) in images"
+        },
+        {
+          "description": "Enables barcode and QR code detection in images",
+          "type": "string",
+          "const": "allow-vision-detect-barcodes",
+          "markdownDescription": "Enables barcode and QR code detection in images"
+        },
+        {
+          "description": "Enables face detection in images",
+          "type": "string",
+          "const": "allow-vision-detect-faces",
+          "markdownDescription": "Enables face detection in images"
+        },
+        {
+          "description": "Enables image classification/labeling",
+          "type": "string",
+          "const": "allow-vision-classify-image",
+          "markdownDescription": "Enables image classification/labeling"
+        }
+      ]
+    }
+  }
+}
