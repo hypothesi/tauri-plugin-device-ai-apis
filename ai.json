@@ -1,7 +1,3 @@
 {
-  "extends": "github:yokuze/aix-config#main",
-  "skills": {},
-  "mcp": {},
-  "rules": {},
-  "prompts": {}
+  "extends": "github:yokuze/aix-config#main"
 }

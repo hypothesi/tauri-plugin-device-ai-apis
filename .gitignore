@@ -18,10 +18,18 @@ dist
 # AI
 
 specs
-
-.aix/tmp
+.aix
 .claude
 .codex
+.copilot
+.mcp.json
+.agents
+.opencode
+opencode.json
+GEMINI.md
+.gemini
+.rules
+.zed
 
 .github/instructions
 .github/prompts
