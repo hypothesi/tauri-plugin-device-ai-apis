@@ -17,7 +17,7 @@ members = ["crates/device-ai"]
 
 [dependencies]
 tauri = { version = "2.10.2" }
-device-ai = { path = "crates/device-ai" }
+device-ai = { version = "0.1.0", path = "crates/device-ai" }
 serde = { version = "1.0", features = ["derive"] }
 
 [build-dependencies]

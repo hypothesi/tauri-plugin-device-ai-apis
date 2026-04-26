@@ -36,6 +36,7 @@
     "prepare": "husky",
     "prepublishOnly": "npm run build",
     "pretest": "npm run build",
+    "release:validate": "node ./scripts/validate-release.mjs",
     "standards:fix": "cargo fmt && oxlint --fix . && oxfmt .",
     "standards": "cargo fmt --all -- --check && cargo clippy -- -D warnings && oxlint ."
   },

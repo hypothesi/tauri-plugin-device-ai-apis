@@ -90,6 +90,14 @@
    * Always use the --save-exact flag when installing a dependency
    * Use the `-y` flag with `npx` when running a command
 
+## releasing
+
+* When a task touches release prep or release automation, follow `RELEASING.md`.
+   * Keep `package.json`, `Cargo.toml`, `crates/device-ai/Cargo.toml`, and the root
+     `device-ai` dependency version aligned.
+   * Run `npm run release:validate -- vX.Y.Z` before creating a release tag.
+   * Releases publish only from GitHub after a verified signed `v*` tag push.
+
 ## testing
 
 * When writing tests, prefer practical e2e tests over unit tests, but add unit tests
