@@ -7,19 +7,18 @@ language identification, and conditional on-device LLM access.
 
 ## Features
 
-| Feature                 | iOS | Android | macOS | Windows  | Linux |
-| ----------------------- | --- | ------- | ----- | -------- | ----- |
-| Speech Recognition      | ✅  | ✅      | ✅    | ✅       | ❌    |
-| Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*     | ❌    |
-| Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅       | ❌    |
-| Barcode/QR Detection    | ✅  | ✅      | ✅    | ❌       | ❌    |
-| Face Detection          | ✅  | ✅      | ✅    | ❌       | ❌    |
-| Image Classification    | ✅  | ✅      | ✅    | ❌       | ❌    |
-| Language Identification | ✅  | ✅      | ✅    | ❌       | ❌    |
-| Translation             | ❌  | ❌      | ❌    | ❌       | ❌    |
-| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      | ❌    |
+| Feature                 | iOS | Android | macOS | Windows  
+| ----------------------- | --- | ------- | ----- | ------- | 
+| Speech Recognition      | ✅  | ✅      | ✅    | ✅       |
+| Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*     |
+| Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅       |
+| Barcode/QR Detection    | ✅  | ✅      | ✅    | ❌       |
+| Face Detection          | ✅  | ✅      | ✅    | ❌       |
+| Image Classification    | ✅  | ✅      | ✅    | ❌       |
+| Language Identification | ✅  | ✅      | ✅    | ❌       |
+| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      |
 
-Legend: ✅ Implemented | ❌ Not Available
+Legend: ✅ Implemented | ❌ Not Available (yet)
 
 \* Windows TTS completes synthesis, but the current Rust backend does not yet play the
 generated stream.
@@ -31,6 +30,10 @@ error gracefully.
 ‡ Windows Phi Silica APIs (`Microsoft.Windows.AI.Text`) are not yet accessible from Rust
 via the `windows` crate. Stubs return a clear "not available" error. Full support is
 planned once WinRT bindings are available.
+
+Linux is not currently supported due to the lack of a unified set of native AI
+APIs across distributions, but contributions to expand platform coverage are
+welcome.
 
 ## Installation
 
