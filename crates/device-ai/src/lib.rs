@@ -1,8 +1,47 @@
-//! Tauri-agnostic access to native, on-device AI APIs.
+//! Cross-platform access to native, on-device AI APIs.
 //!
-//! This crate exposes Rust-first access to platform-native speech, vision, text, and
-//! language-model APIs without depending on Tauri. The Tauri plugin in the repository
-//! consumes this crate as an adapter layer for JS/IPC use cases.
+//! This crate provides Rust-first access to platform-native speech recognition, speech
+//! synthesis, OCR, biometric detection, and local language model APIs. Works on macOS and Windows.
+//!
+//! ## Quick start
+//!
+//! ```no_run
+//! use device_ai::{DeviceAi, ImageSource, OcrOptions};
+//!
+//! fn main() -> device_ai::Result<()> {
+//!     let ai = DeviceAi::new();
+//!
+//!     // Check what's available on this platform
+//!     let caps = ai.capabilities();
+//!     println!("speech recognition: {}", caps.speech_recognition.available);
+//!     println!("OCR: {}", caps.text_recognition.available);
+//!
+//!     // Run OCR on an image
+//!     let result = ai.vision().recognize_text(
+//!         ImageSource::from_path("receipt.png"),
+//!         OcrOptions::new(),
+//!     )?;
+//!     println!("recognized: {}", result.text);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Feature flags
+//!
+//! Enable or disable individual capabilities by disabling default features:
+//!
+//! ```toml
+//! [dependencies]
+//! device-ai = { version = "0.1", default-features = false, features = ["speech", "vision"] }
+//! ```
+//!
+//! | Feature | Description |
+//! |---------|-------------|
+//! | `speech` | Speech recognition and speech synthesis |
+//! | `vision` | OCR, barcode detection, face detection, image classification |
+//! | `text` | Language identification |
+//! | `llm` | On-device language model (macOS only) |
 
 mod capabilities;
 mod error;
@@ -22,6 +61,21 @@ pub use models::*;
 const LANGUAGE_MODEL_UNAVAILABLE_REASON: &str = "Language model not available on this platform";
 
 /// Entry point for the device AI library.
+///
+/// # Quick start
+///
+/// ```no_run
+/// use device_ai::DeviceAi;
+///
+/// fn main() -> device_ai::Result<()> {
+///     let ai = DeviceAi::new();
+///     let caps = ai.capabilities();
+///
+///     println!("speech recognition: {}", caps.speech_recognition.available);
+///     println!("OCR: {}", caps.text_recognition.available);
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DeviceAi;
 
@@ -32,6 +86,26 @@ impl DeviceAi {
     }
 
     /// Get the capabilities available on the current platform.
+    ///
+    /// Returns a [`Capabilities`] struct indicating which AI features are available,
+    /// whether they run on-device, and if they require user permission.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use device_ai::DeviceAi;
+    ///
+    /// fn main() -> device_ai::Result<()> {
+    ///     let ai = DeviceAi::new();
+    ///     let caps = ai.capabilities();
+    ///
+    ///     if caps.speech_recognition.available {
+    ///         println!("speech is available on-device: {}", caps.speech_recognition.on_device);
+    ///         println!("requires permission: {}", caps.speech_recognition.requires_permission);
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn capabilities(&self) -> Capabilities {
         #[cfg(target_os = "windows")]
         {
@@ -44,31 +118,80 @@ impl DeviceAi {
     }
 
     /// Access speech-related APIs.
+    ///
+    /// Provides speech recognition and speech synthesis capabilities.
     pub fn speech(&self) -> Speech<'_> {
         Speech(self)
     }
 
     /// Access vision-related APIs.
+    ///
+    /// Provides OCR, barcode detection, face detection, and image classification.
     pub fn vision(&self) -> Vision<'_> {
         Vision(self)
     }
 
     /// Access text-related APIs.
+    ///
+    /// Provides language identification and translation.
     pub fn text(&self) -> Text<'_> {
         Text(self)
     }
 
     /// Access language-model APIs.
+    ///
+    /// Provides on-device LLM generation, summarization, and rewriting (macOS only).
     pub fn llm(&self) -> Llm<'_> {
         Llm(self)
     }
 }
 
 /// Speech-related APIs.
+///
+/// Provides access to speech recognition and speech synthesis capabilities.
+///
+/// # Example
+///
+/// ```no_run
+/// use device_ai::{DeviceAi, RecognitionOptions, SynthesisOptions};
+///
+/// fn main() -> device_ai::Result<()> {
+///     let ai = DeviceAi::new();
+///
+///     // Get available voices for synthesis
+///     let voices = ai.speech().voices()?;
+///     for voice in voices.iter().take(3) {
+///         println!("{} ({})", voice.name, voice.language);
+///     }
+///
+///     // Synthesize speech (plays audio on macOS)
+///     ai.speech().speak("Hello, world!", SynthesisOptions::new())?;
+///     Ok(())
+/// }
+/// ```
 pub struct Speech<'a>(&'a DeviceAi);
 
 impl Speech<'_> {
     /// Perform one-shot speech recognition.
+    ///
+    /// Converts audio to text. Requires microphone permission on macOS.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use device_ai::{DeviceAi, RecognitionOptions, AudioSource};
+    ///
+    /// fn main() -> device_ai::Result<()> {
+    ///     let ai = DeviceAi::new();
+    ///
+    ///     // Recognize from a file
+    ///     let result = ai.speech().recognize(
+    ///         RecognitionOptions::new().with_audio_source(AudioSource::from_path("audio.wav")),
+    ///     )?;
+    ///     println!("recognized: {}", result.text);
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn recognize(&self, options: RecognitionOptions) -> Result<RecognitionResult> {
         let _ = self.0;
 
@@ -89,6 +212,8 @@ impl Speech<'_> {
     }
 
     /// Start streaming speech recognition.
+    ///
+    /// Streaming recognition is not yet implemented. Returns an error.
     pub fn start_recognition(&self, _options: RecognitionOptions) -> Result<SpeechSessionId> {
         let _ = self.0;
 
@@ -98,6 +223,8 @@ impl Speech<'_> {
     }
 
     /// Stop streaming speech recognition.
+    ///
+    /// Streaming recognition is not yet implemented. Returns an error.
     pub fn stop_recognition(&self, _session_id: SpeechSessionId) -> Result<RecognitionResult> {
         let _ = self.0;
 
@@ -106,7 +233,10 @@ impl Speech<'_> {
         })
     }
 
-    /// Synthesize and play text.
+    /// Synthesize and play text as speech.
+    ///
+    /// Converts text to audio and plays it. On macOS, uses the system audio output.
+    /// On Windows, synthesizes but does not play audio yet.
     pub fn speak(&self, text: &str, options: SynthesisOptions) -> Result<()> {
         let _ = self.0;
 
@@ -127,6 +257,26 @@ impl Speech<'_> {
     }
 
     /// Get available voices for speech synthesis.
+    ///
+    /// Returns a list of voices installed on the system.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use device_ai::DeviceAi;
+    ///
+    /// fn main() -> device_ai::Result<()> {
+    ///     let ai = DeviceAi::new();
+    ///     let voices = ai.speech().voices()?;
+    ///
+    ///     // Find English voices
+    ///     let en_voices: Vec<_> = voices.iter()
+    ///         .filter(|v| v.language.starts_with("en"))
+    ///         .collect();
+    ///     println!("{} English voices available", en_voices.len());
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn voices(&self) -> Result<Vec<Voice>> {
         let _ = self.0;
 
@@ -146,10 +296,48 @@ impl Speech<'_> {
 }
 
 /// Vision-related APIs.
+///
+/// Provides access to OCR, barcode detection, face detection, and image classification.
+///
+/// # Example
+///
+/// ```no_run
+/// use device_ai::{DeviceAi, ImageSource, OcrOptions};
+///
+/// fn main() -> device_ai::Result<()> {
+///     let ai = DeviceAi::new();
+///
+///     let result = ai.vision().recognize_text(
+///         ImageSource::from_path("receipt.png"),
+///         OcrOptions::new(),
+///     )?;
+///     println!("recognized: {}", result.text);
+///     Ok(())
+/// }
+/// ```
 pub struct Vision<'a>(&'a DeviceAi);
 
 impl Vision<'_> {
-    /// Recognize text in an image.
+    /// Recognize text in an image (OCR).
+    ///
+    /// Extracts text from an image. Supports multiple languages.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use device_ai::{DeviceAi, ImageSource, OcrOptions};
+    ///
+    /// fn main() -> device_ai::Result<()> {
+    ///     let ai = DeviceAi::new();
+    ///
+    ///     let result = ai.vision().recognize_text(
+    ///         ImageSource::from_path("document.png"),
+    ///         OcrOptions::new().with_language("en-US"),
+    ///     )?;
+    ///     println!("found {} lines", result.blocks.len());
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn recognize_text(
         &self,
         image: ImageSource,
@@ -174,6 +362,8 @@ impl Vision<'_> {
     }
 
     /// Detect barcodes in an image.
+    ///
+    /// Detects and decodes barcodes and QR codes. Currently only available on macOS.
     pub fn detect_barcodes(
         &self,
         image: ImageSource,
@@ -194,6 +384,8 @@ impl Vision<'_> {
     }
 
     /// Detect faces in an image.
+    ///
+    /// Detects faces with optional landmarks and attributes. Currently only available on macOS.
     pub fn detect_faces(&self, image: ImageSource, options: FaceOptions) -> Result<Vec<Face>> {
         let _ = self.0;
 
@@ -210,6 +402,8 @@ impl Vision<'_> {
     }
 
     /// Classify an image.
+    ///
+    /// Classifies an image into categories. Currently only available on macOS.
     pub fn classify_image(
         &self,
         image: ImageSource,
@@ -231,10 +425,28 @@ impl Vision<'_> {
 }
 
 /// Text-related APIs.
+///
+/// Provides access to language identification and translation.
+///
+/// # Example
+///
+/// ```no_run
+/// use device_ai::DeviceAi;
+///
+/// fn main() -> device_ai::Result<()> {
+///     let ai = DeviceAi::new();
+///
+///     let result = ai.text().identify_language("Hello world")?;
+///     println!("detected: {} (confidence: {})", result.language, result.confidence);
+///     Ok(())
+/// }
+/// ```
 pub struct Text<'a>(&'a DeviceAi);
 
 impl Text<'_> {
     /// Identify the language of text.
+    ///
+    /// Detects the most likely language for the given text. Currently only available on macOS.
     pub fn identify_language(&self, text: &str) -> Result<LanguageIdentification> {
         let _ = self.0;
 
@@ -251,6 +463,8 @@ impl Text<'_> {
     }
 
     /// Translate text between languages.
+    ///
+    /// Translation is not yet implemented. Returns [`Error::FeatureNotAvailable`].
     pub fn translate(&self, text: &str, from: &str, to: &str) -> Result<Translation> {
         let _ = self.0;
         let _ = (text, from, to);
@@ -260,10 +474,40 @@ impl Text<'_> {
 }
 
 /// Language-model APIs.
+///
+/// Provides access to on-device language model generation, summarization, and rewriting.
+/// Currently only available on macOS with Apple Intelligence.
+///
+/// # Example
+///
+/// ```no_run
+/// use device_ai::{DeviceAi, LlmGenerateOptions};
+///
+/// fn main() -> device_ai::Result<()> {
+///     let ai = DeviceAi::new();
+///
+///     // Check availability
+///     let availability = ai.llm().check_availability()?;
+///     if !availability.available {
+///         println!("LLM not available: {}", availability.reason.as_deref().unwrap_or("unknown"));
+///         return Ok(());
+///     }
+///
+///     // Generate text
+///     let result = ai.llm().generate(
+///         LlmGenerateOptions::new("What is Rust?").max_tokens(100),
+///     )?;
+///     println!("response: {}", result.content);
+///     Ok(())
+/// }
+/// ```
 pub struct Llm<'a>(&'a DeviceAi);
 
 impl Llm<'_> {
     /// Check whether the on-device language model is available.
+    ///
+    /// Returns availability status and reason if unavailable. On macOS, requires
+    /// Apple Intelligence to be enabled.
     pub fn check_availability(&self) -> Result<LlmAvailability> {
         let _ = self.0;
 
@@ -285,6 +529,9 @@ impl Llm<'_> {
     }
 
     /// Get information about the on-device language model.
+    ///
+    /// Returns model details including context window size and capabilities.
+    /// Currently only available on macOS.
     pub fn model_info(&self) -> Result<LlmModelInfo> {
         let _ = self.0;
 
@@ -303,6 +550,9 @@ impl Llm<'_> {
     }
 
     /// Generate text using the on-device language model.
+    ///
+    /// Performs single-shot text generation. For streaming output, use
+    /// [`generate_stream`](Self::generate_stream) instead.
     pub fn generate(&self, options: LlmGenerateOptions) -> Result<LlmGenerateResult> {
         let _ = self.0;
 
@@ -323,6 +573,31 @@ impl Llm<'_> {
     }
 
     /// Stream generated text from the on-device language model.
+    ///
+    /// Calls the provided callback with incremental text chunks. Use for real-time output.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use device_ai::{DeviceAi, LlmGenerateOptions, LlmStreamEvent};
+    ///
+    /// fn main() -> device_ai::Result<()> {
+    ///     let ai = DeviceAi::new();
+    ///
+    ///     ai.llm().generate_stream(
+    ///         LlmGenerateOptions::new("Count to 3"),
+    ///         |event| {
+    ///             match event {
+    ///                 LlmStreamEvent::Delta { content } => print!("{}", content),
+    ///                 LlmStreamEvent::Done { .. } => println!(),
+    ///                 LlmStreamEvent::Error { message } => eprintln!("error: {}", message),
+    ///             }
+    ///             Ok(())
+    ///         },
+    ///     )?;
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn generate_stream<F>(&self, options: LlmGenerateOptions, on_event: F) -> Result<()>
     where
         F: FnMut(LlmStreamEvent) -> Result<()> + 'static,
@@ -346,6 +621,9 @@ impl Llm<'_> {
     }
 
     /// Create a multi-turn language-model session.
+    ///
+    /// Sessions maintain conversation history for contextual responses.
+    /// Currently only available on macOS.
     pub fn create_session(&self, options: LlmSessionOptions) -> Result<LlmSessionId> {
         let _ = self.0;
 
@@ -366,6 +644,9 @@ impl Llm<'_> {
     }
 
     /// Send a message to a language-model session.
+    ///
+    /// Send a message to an existing session. Use [`create_session`](Self::create_session)
+    /// to create a new session first.
     pub fn session_send(
         &self,
         session_id: LlmSessionId,
@@ -390,6 +671,9 @@ impl Llm<'_> {
     }
 
     /// Stream a response from a language-model session.
+    ///
+    /// Streams a response from an existing session. Use [`create_session`](Self::create_session)
+    /// to create a new session first.
     pub fn session_send_stream<F>(
         &self,
         session_id: LlmSessionId,
@@ -418,6 +702,8 @@ impl Llm<'_> {
     }
 
     /// Destroy a language-model session.
+    ///
+    /// Ends a session and releases its resources. Currently only available on macOS.
     pub fn destroy_session(&self, session_id: LlmSessionId) -> Result<()> {
         let _ = self.0;
 
@@ -438,6 +724,8 @@ impl Llm<'_> {
     }
 
     /// Summarize text using the on-device language model.
+    ///
+    /// Generates a summary of the provided text. Currently only available on macOS.
     pub fn summarize(&self, options: LlmSummarizeOptions) -> Result<LlmSummarizeResult> {
         let _ = self.0;
 
@@ -458,6 +746,8 @@ impl Llm<'_> {
     }
 
     /// Rewrite text using the on-device language model.
+    ///
+    /// Rewrites text with an optional tone. Currently only available on macOS.
     pub fn rewrite(&self, options: LlmRewriteOptions) -> Result<LlmRewriteResult> {
         let _ = self.0;
 
