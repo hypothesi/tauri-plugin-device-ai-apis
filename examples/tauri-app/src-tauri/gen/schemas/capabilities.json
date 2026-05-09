@@ -1,1 +1,9 @@
-{"default":{"identifier":"default","description":"enables the default permissions","local":true,"windows":["main"],"permissions":["core:default","device-ai-apis:all"]}}
+{
+  "default": {
+    "identifier": "default",
+    "description": "enables the default permissions",
+    "local": true,
+    "windows": ["main"],
+    "permissions": ["core:default", "device-ai-apis:all"]
+  }
+}

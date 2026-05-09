@@ -6,25 +6,25 @@ Cross-platform access to native, on-device AI APIs for Rust.
 
 ## Key Features
 
-* **Vision:** OCR (text recognition), barcode detection, face detection, and image classification.
-* **Speech:** Speech recognition (speech-to-text) and speech synthesis (text-to-speech).
-* **Text:** Language identification and translation.
-* **LLM:** On-device language model generation, summarization, and rewriting.
+- **Vision:** OCR (text recognition), barcode detection, face detection, and image classification.
+- **Speech:** Speech recognition (speech-to-text) and speech synthesis (text-to-speech).
+- **Text:** Language identification and translation.
+- **LLM:** On-device language model generation, summarization, and rewriting.
 
 ## Platform Support
 
-| Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
+| Feature | macOS | Windows  | Linux |
+| ------- | ----- | -------- | ----- |
 | Vision  | ✅    | ✅ (OCR) | -     |
-| Speech  | ✅    | ✅      | -     |
-| Text    | ✅    | -       | -     |
-| LLM     | ✅    | (Stubs) | -     |
+| Speech  | ✅    | ✅       | -     |
+| Text    | ✅    | -        | -     |
+| LLM     | ✅    | (Stubs)  | -     |
 
-*Note: Some features are still in development or have platform-specific limitations.*
+_Note: Some features are still in development or have platform-specific limitations._
 
 ## Requirements
 
-* **macOS:** Xcode Command Line Tools are required (`xcode-select --install`).
+- **macOS:** Xcode Command Line Tools are required (`xcode-select --install`).
 
 ## Quick Start
 
@@ -61,20 +61,20 @@ fn main() -> device_ai::Result<()> {
 
 Enable or disable individual capabilities to minimize dependencies and binary size:
 
-| Feature | Description | Default |
-|---------|-------------|---------|
-| `speech` | Speech recognition and speech synthesis | Yes |
-| `vision` | OCR, barcode detection, face detection, image classification | Yes |
-| `text` | Language identification | Yes |
-| `llm` | On-device language model | Yes |
+| Feature  | Description                                                  | Default |
+| -------- | ------------------------------------------------------------ | ------- |
+| `speech` | Speech recognition and speech synthesis                      | Yes     |
+| `vision` | OCR, barcode detection, face detection, image classification | Yes     |
+| `text`   | Language identification                                      | Yes     |
+| `llm`    | On-device language model                                     | Yes     |
 
 ## Current Limitations
 
-* **Streaming Speech:** Native streaming speech recognition is not yet implemented.
-* **Translation:** Currently returns `FEATURE_NOT_AVAILABLE`.
-* **Windows Synthesis:** Text-to-speech synthesizes but does not yet play audio directly.
-* **Windows LLM:** APIs are currently stubs awaiting Phi Silica bindings.
-* **Apple Intelligence:** LLM support requires macOS 15.1+ and the FoundationModels SDK.
+- **Streaming Speech:** Native streaming speech recognition is not yet implemented.
+- **Translation:** Currently returns `FEATURE_NOT_AVAILABLE`.
+- **Windows Synthesis:** Text-to-speech synthesizes but does not yet play audio directly.
+- **Windows LLM:** APIs are currently stubs awaiting Phi Silica bindings.
+- **Apple Intelligence:** LLM support requires macOS 15.1+ and the FoundationModels SDK.
 
 ## Local Development & Verification
 
@@ -99,4 +99,4 @@ cargo run -p device-ai --example device-ai -- llm-generate "Explain Rust in one 
 
 ---
 
-*This crate is maintained as part of the [tauri-plugin-device-ai-apis](https://github.com/hypothesi/tauri-plugin-device-ai-apis) project. It serves as the core Rust implementation for the Tauri plugin but can be used as a standalone library in any Rust project.*
+_This crate is maintained as part of the [tauri-plugin-device-ai-apis](https://github.com/hypothesi/tauri-plugin-device-ai-apis) project. It serves as the core Rust implementation for the Tauri plugin but can be used as a standalone library in any Rust project._

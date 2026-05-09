@@ -32,10 +32,10 @@ Before tagging a release, keep these version fields aligned:
    ```
 
 2. Update the release version in the repository before tagging:
-   * `package.json`
-   * `Cargo.toml`
-   * `crates/device-ai/Cargo.toml`
-   * the `device-ai` dependency version in `Cargo.toml`
+   - `package.json`
+   - `Cargo.toml`
+   - `crates/device-ai/Cargo.toml`
+   - the `device-ai` dependency version in `Cargo.toml`
 
 3. Run the release validation and normal quality gates:
 

@@ -156,10 +156,7 @@ export async function createSession(options?: LlmSessionOptions): Promise<string
  * @returns The model's response.
  * @throws If the session is not found or generation fails.
  */
-export async function sessionSend(
-  sessionId: string,
-  message: string,
-): Promise<LlmGenerateResult> {
+export async function sessionSend(sessionId: string, message: string): Promise<LlmGenerateResult> {
   if (!isTauri()) {
     throw new Error("LLM sessions require Tauri runtime");
   }
@@ -225,9 +222,7 @@ export async function destroySession(sessionId: string): Promise<void> {
  * console.log(result.summary);
  * ```
  */
-export async function summarize(
-  options: LlmSummarizeOptions,
-): Promise<LlmSummarizeResult> {
+export async function summarize(options: LlmSummarizeOptions): Promise<LlmSummarizeResult> {
   if (!isTauri()) {
     throw new Error("LLM summarization requires Tauri runtime");
   }

@@ -7,16 +7,16 @@ language identification, and conditional on-device LLM access.
 
 ## Features
 
-| Feature                 | iOS | Android | macOS | Windows  
-| ----------------------- | --- | ------- | ----- | ------- | 
-| Speech Recognition      | ✅  | ✅      | ✅    | ✅       |
-| Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*     |
-| Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅       |
-| Barcode/QR Detection    | ✅  | ✅      | ✅    | ❌       |
-| Face Detection          | ✅  | ✅      | ✅    | ❌       |
-| Image Classification    | ✅  | ✅      | ✅    | ❌       |
-| Language Identification | ✅  | ✅      | ✅    | ❌       |
-| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      |
+| Feature                 | iOS | Android | macOS | Windows |
+| ----------------------- | --- | ------- | ----- | ------- |
+| Speech Recognition      | ✅  | ✅      | ✅    | ✅      |
+| Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*    |
+| Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅      |
+| Barcode/QR Detection    | ✅  | ✅      | ✅    | ❌      |
+| Face Detection          | ✅  | ✅      | ✅    | ❌      |
+| Image Classification    | ✅  | ✅      | ✅    | ❌      |
+| Language Identification | ✅  | ✅      | ✅    | ❌      |
+| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡     |
 
 Legend: ✅ Implemented | ❌ Not Available (yet)
 
@@ -248,16 +248,13 @@ console.log(result.content);
 
 // Streaming generation
 let streamed = "";
-await llm.generateStream(
-  { prompt: "Write a short poem about the sea." },
-  (event) => {
-    if (event.type === "delta") streamed += event.content;
-    if (event.type === "done") {
-      console.log(streamed || event.content);
-      console.log("Done:", event.finishReason);
-    }
-  },
-);
+await llm.generateStream({ prompt: "Write a short poem about the sea." }, (event) => {
+  if (event.type === "delta") streamed += event.content;
+  if (event.type === "done") {
+    console.log(streamed || event.content);
+    console.log("Done:", event.finishReason);
+  }
+});
 
 // Multi-turn session
 const sessionId = await llm.createSession({
@@ -310,30 +307,30 @@ Or use granular permission sets:
 
 Individual permissions are also available:
 
-| Permission                              | Description                        |
-| --------------------------------------- | ---------------------------------- |
-| `allow-get-capabilities`                | Query available AI features        |
-| `allow-speech-recognize`                | One-shot speech recognition        |
-| `allow-speech-recognize-start`          | Start streaming recognition        |
-| `allow-speech-recognize-stop`           | Stop streaming recognition         |
-| `allow-speech-synthesize`              | Text-to-speech synthesis           |
-| `allow-speech-get-voices`              | List available TTS voices          |
-| `allow-vision-recognize-text`          | OCR text recognition               |
-| `allow-vision-detect-barcodes`         | Barcode and QR code detection      |
-| `allow-vision-detect-faces`            | Face detection                     |
-| `allow-vision-classify-image`          | Image classification               |
-| `allow-text-identify-language`         | Language identification            |
-| `allow-text-translate`                 | Text translation                   |
-| `allow-llm-check-availability`        | Check on-device LLM availability   |
-| `allow-llm-get-model-info`            | Get language model metadata        |
-| `allow-llm-generate`                  | Single-shot text generation        |
-| `allow-llm-generate-stream`           | Streaming text generation          |
-| `allow-llm-create-session`            | Create multi-turn session          |
-| `allow-llm-session-send`              | Send message in a session          |
-| `allow-llm-session-send-stream`       | Stream response in a session       |
-| `allow-llm-destroy-session`           | Destroy a session                  |
-| `allow-llm-summarize`                 | Summarize text                     |
-| `allow-llm-rewrite`                   | Rewrite text with a given tone     |
+| Permission                      | Description                      |
+| ------------------------------- | -------------------------------- |
+| `allow-get-capabilities`        | Query available AI features      |
+| `allow-speech-recognize`        | One-shot speech recognition      |
+| `allow-speech-recognize-start`  | Start streaming recognition      |
+| `allow-speech-recognize-stop`   | Stop streaming recognition       |
+| `allow-speech-synthesize`       | Text-to-speech synthesis         |
+| `allow-speech-get-voices`       | List available TTS voices        |
+| `allow-vision-recognize-text`   | OCR text recognition             |
+| `allow-vision-detect-barcodes`  | Barcode and QR code detection    |
+| `allow-vision-detect-faces`     | Face detection                   |
+| `allow-vision-classify-image`   | Image classification             |
+| `allow-text-identify-language`  | Language identification          |
+| `allow-text-translate`          | Text translation                 |
+| `allow-llm-check-availability`  | Check on-device LLM availability |
+| `allow-llm-get-model-info`      | Get language model metadata      |
+| `allow-llm-generate`            | Single-shot text generation      |
+| `allow-llm-generate-stream`     | Streaming text generation        |
+| `allow-llm-create-session`      | Create multi-turn session        |
+| `allow-llm-session-send`        | Send message in a session        |
+| `allow-llm-session-send-stream` | Stream response in a session     |
+| `allow-llm-destroy-session`     | Destroy a session                |
+| `allow-llm-summarize`           | Summarize text                   |
+| `allow-llm-rewrite`             | Rewrite text with a given tone   |
 
 Permission sets: `speech-recognition`, `speech-synthesis`, `vision-all`, `text-all`,
 `llm-all`, and `all` (everything).

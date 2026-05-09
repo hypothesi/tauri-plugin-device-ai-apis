@@ -13,17 +13,17 @@ When a signed release tag is pushed, `release.yml` does this:
 
 1. Verifies the tag is annotated and GitHub marks its signature as verified.
 2. Confirms the tag version matches:
-   * `package.json`
-   * `Cargo.toml`
-   * `crates/device-ai/Cargo.toml`
-   * the root crate's `device-ai` dependency version
+   - `package.json`
+   - `Cargo.toml`
+   - `crates/device-ai/Cargo.toml`
+   - the root crate's `device-ai` dependency version
 3. Re-runs the repository release gates:
-   * `npm run standards`
-   * `cargo test --all-targets --all-features`
-   * `npm run build`
-   * the example app build
-   * `cargo package --locked` for `device-ai`
-   * `cargo package --list` for the plugin crate, because the plugin depends on `device-ai`
+   - `npm run standards`
+   - `cargo test --all-targets --all-features`
+   - `npm run build`
+   - the example app build
+   - `cargo package --locked` for `device-ai`
+   - `cargo package --list` for the plugin crate, because the plugin depends on `device-ai`
      being present on crates.io before a full publish verification can succeed
 4. Publishes `device-ai` to crates.io.
 5. Publishes `tauri-plugin-device-ai-apis` to crates.io, retrying while the `device-ai`

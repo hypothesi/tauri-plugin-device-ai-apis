@@ -42,7 +42,9 @@ export async function recognizeText(
   options?: OcrOptions,
 ): Promise<TextRecognitionResult> {
   if (!isTauri()) {
-    throw new Error("Text recognition (OCR) requires native platform APIs and is not available in the browser.");
+    throw new Error(
+      "Text recognition (OCR) requires native platform APIs and is not available in the browser.",
+    );
   }
   return invoke<TextRecognitionResult>("plugin:device-ai-apis|vision_recognize_text", {
     image,
@@ -106,7 +108,9 @@ export async function detectBarcodes(
  */
 export async function detectFaces(image: ImageSource, options?: FaceOptions): Promise<Face[]> {
   if (!isTauri()) {
-    throw new Error("Face detection requires native platform APIs and is not available in the browser.");
+    throw new Error(
+      "Face detection requires native platform APIs and is not available in the browser.",
+    );
   }
   return invoke<Face[]>("plugin:device-ai-apis|vision_detect_faces", {
     image,
@@ -139,7 +143,9 @@ export async function classifyImage(
   options?: ClassificationOptions,
 ): Promise<Classification[]> {
   if (!isTauri()) {
-    throw new Error("Image classification requires native platform APIs and is not available in the browser.");
+    throw new Error(
+      "Image classification requires native platform APIs and is not available in the browser.",
+    );
   }
   return invoke<Classification[]>("plugin:device-ai-apis|vision_classify_image", {
     image,
