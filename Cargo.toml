@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-device-ai-apis"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Hypothesi"]
 description = "A Tauri plugin for cross-platform device AI capabilities including speech, vision, and text processing"
 edition = "2021"
@@ -17,7 +17,7 @@ members = ["crates/device-ai"]
 
 [dependencies]
 tauri = { version = "2.10.2" }
-device-ai = { version = "0.1.0", path = "crates/device-ai" }
+device-ai = { version = "0.1.1", path = "crates/device-ai" }
 serde = { version = "1.0", features = ["derive"] }
 
 [build-dependencies]
