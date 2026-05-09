@@ -1,28 +1,30 @@
 # device-ai
 
-`device-ai` is the Tauri-agnostic Rust library extracted from this repository. It owns the
-reusable desktop-native implementation that the root Tauri plugin uses on macOS and
-Windows.
+Cross-platform access to native, on-device AI APIs for Rust.
 
-iOS and Android still route through the root plugin's Swift/Kotlin mobile bridge, so
-direct `device-ai` use is currently focused on desktop Rust consumers.
+`device-ai` provides a high-level, idiomatic Rust interface to platform-native AI capabilities on macOS and Windows. By leveraging the APIs already built into the operating system (like Apple's Vision and Speech frameworks or Windows Media and ML APIs), you can add powerful AI features to your applications without the overhead of heavy models or external cloud dependencies.
 
-## What it provides
+## Key Features
 
-- Speech recognition and speech synthesis
-- OCR, barcode detection, face detection, and image classification
-- Language identification
-- On-device LLM access where the target platform exposes it
+* **Vision:** OCR (text recognition), barcode detection, face detection, and image classification.
+* **Speech:** Speech recognition (speech-to-text) and speech synthesis (text-to-speech).
+* **Text:** Language identification and translation.
+* **LLM:** On-device language model generation, summarization, and rewriting.
 
-## Current limitations
+## Platform Support
 
-- Native streaming speech recognition is not implemented yet
-- Translation currently returns `FEATURE_NOT_AVAILABLE`
-- Windows text-to-speech synthesizes but does not play audio yet
-- Windows LLM APIs are stubs until Rust bindings exist for Phi Silica
-- Apple LLM support requires the FoundationModels SDK/runtime
+| Feature | macOS | Windows | Linux |
+|---------|-------|---------|-------|
+| Vision  | ✅    | ✅ (OCR) | -     |
+| Speech  | ✅    | ✅      | -     |
+| Text    | ✅    | -       | -     |
+| LLM     | ✅    | (Stubs) | -     |
 
-## Quick start
+*Note: Some features are still in development or have platform-specific limitations.*
+
+## Quick Start
+
+Add `device-ai` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -33,30 +35,64 @@ device-ai = { git = "https://github.com/hypothesi/tauri-plugin-device-ai-apis" }
 use device_ai::{DeviceAi, ImageSource, OcrOptions};
 
 fn main() -> device_ai::Result<()> {
-    let ai = DeviceAi::new();
-    let capabilities = ai.capabilities();
+   let ai = DeviceAi::new();
 
-    println!("speech recognition: {}", capabilities.speech_recognition.available);
+   // Check what's available on this platform
+   let caps = ai.capabilities();
+   println!("speech recognition: {}", caps.speech_recognition.available);
+   println!("OCR: {}", caps.text_recognition.available);
 
-    let result = ai.vision().recognize_text(
-        ImageSource::from_path("receipt.png"),
-        OcrOptions::new(),
-    )?;
+   // Run OCR on an image
+   let result = ai.vision().recognize_text(
+      ImageSource::from_path("receipt.png"),
+      OcrOptions::new(),
+   )?;
 
-    println!("{}", result.text);
-    Ok(())
+   println!("recognized: {}", result.text);
+   Ok(())
 }
 ```
 
-## Direct verification
+## Feature Flags
 
-Use the bundled example CLI to exercise the library directly on desktop:
+Enable or disable individual capabilities to minimize dependencies and binary size:
+
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `speech` | Speech recognition and speech synthesis | Yes |
+| `vision` | OCR, barcode detection, face detection, image classification | Yes |
+| `text` | Language identification | Yes |
+| `llm` | On-device language model | Yes |
+
+## Current Limitations
+
+* **Streaming Speech:** Native streaming speech recognition is not yet implemented.
+* **Translation:** Currently returns `FEATURE_NOT_AVAILABLE`.
+* **Windows Synthesis:** Text-to-speech synthesizes but does not yet play audio directly.
+* **Windows LLM:** APIs are currently stubs awaiting Phi Silica bindings.
+* **Apple Intelligence:** LLM support requires macOS 15.1+ and the FoundationModels SDK.
+
+## Local Development & Verification
+
+You can test the library's capabilities on your machine using the bundled example CLI:
 
 ```bash
+# General
 cargo run -p device-ai --example device-ai -- capabilities
+
+# Speech
 cargo run -p device-ai --example device-ai -- speech-voices
+cargo run -p device-ai --example device-ai -- speech-speak "Hello from device-ai"
+
+# Vision
 cargo run -p device-ai --example device-ai -- vision-ocr ./path/to/image.png
+cargo run -p device-ai --example device-ai -- vision-faces ./path/to/image.png
+
+# LLM
+cargo run -p device-ai --example device-ai -- llm-availability
+cargo run -p device-ai --example device-ai -- llm-generate "Explain Rust in one sentence."
 ```
 
-Unsupported commands return explicit structured errors, which is the expected behavior for
-unimplemented paths such as native speech streaming or translation.
+---
+
+*This crate is maintained as part of the [tauri-plugin-device-ai-apis](https://github.com/hypothesi/tauri-plugin-device-ai-apis) project. It serves as the core Rust implementation for the Tauri plugin but can be used as a standalone library in any Rust project.*
