@@ -22,6 +22,10 @@ Cross-platform access to native, on-device AI APIs for Rust.
 
 *Note: Some features are still in development or have platform-specific limitations.*
 
+## Requirements
+
+* **macOS:** Xcode Command Line Tools are required (`xcode-select --install`).
+
 ## Quick Start
 
 Add `device-ai` to your `Cargo.toml`:
