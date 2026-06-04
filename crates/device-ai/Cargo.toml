@@ -2,10 +2,10 @@
 name = "device-ai"
 version = "0.1.1"
 authors = ["Hypothesi"]
-description = "Tauri-agnostic Rust library for native on-device AI APIs"
+description = "Rust library for native, on-device AI APIs"
 edition = "2021"
 rust-version = "1.77.2"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/hypothesi/tauri-plugin-device-ai-apis"
 keywords = ["ai", "speech", "vision", "llm", "ocr"]
 categories = ["api-bindings", "multimedia"]

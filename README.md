@@ -9,6 +9,7 @@ language identification, and conditional on-device LLM access.
 
 | Feature                 | iOS | Android | macOS | Windows  
 | ----------------------- | --- | ------- | ----- | ------- | 
+| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      |
 | Speech Recognition      | ✅  | ✅      | ✅    | ✅       |
 | Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*     |
 | Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅       |
@@ -16,7 +17,6 @@ language identification, and conditional on-device LLM access.
 | Face Detection          | ✅  | ✅      | ✅    | ❌       |
 | Image Classification    | ✅  | ✅      | ✅    | ❌       |
 | Language Identification | ✅  | ✅      | ✅    | ❌       |
-| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      |
 
 Legend: ✅ Implemented | ❌ Not Available (yet)
 
@@ -96,6 +96,59 @@ npm install @hypothesi/tauri-plugin-device-ai-apis
 ```
 
 ## Usage
+
+### Language model (LLM)
+
+```typescript
+import { llm } from "@hypothesi/tauri-plugin-device-ai-apis";
+
+// Check availability
+const status = await llm.checkAvailability();
+if (!status.available) {
+  console.log("LLM not available:", status.reason);
+}
+
+// Single-shot generation
+const result = await llm.generate({
+  prompt: "Explain quantum computing in one paragraph.",
+  temperature: 0.7,
+  maxTokens: 256,
+});
+console.log(result.content);
+
+// Streaming generation
+let streamed = "";
+await llm.generateStream(
+  { prompt: "Write a short poem about the sea." },
+  (event) => {
+    if (event.type === "delta") streamed += event.content;
+    if (event.type === "done") {
+      console.log(streamed || event.content);
+      console.log("Done:", event.finishReason);
+    }
+  },
+);
+
+// Multi-turn session
+const sessionId = await llm.createSession({
+  systemPrompt: "You are a helpful assistant.",
+});
+const reply = await llm.sessionSend(sessionId, "What is 2+2?");
+console.log(reply.content);
+await llm.destroySession(sessionId);
+
+// Text intelligence
+const summary = await llm.summarize({
+  text: "Long article text here...",
+});
+console.log(summary.summary);
+
+const rewritten = await llm.rewrite({
+  text: "hey wanna grab lunch tmrw?",
+  tone: "formal",
+});
+console.log(rewritten.rewrittenText);
+```
 
 ### Capability Detection
 
@@ -225,59 +278,6 @@ import { text } from "@hypothesi/tauri-plugin-device-ai-apis";
 const result = await text.identifyLanguage("Bonjour, comment allez-vous?");
 console.log("Language:", result.language); // 'fr'
 console.log("Confidence:", result.confidence);
-```
-
-### Language model (LLM)
-
-```typescript
-import { llm } from "@hypothesi/tauri-plugin-device-ai-apis";
-
-// Check availability
-const status = await llm.checkAvailability();
-if (!status.available) {
-  console.log("LLM not available:", status.reason);
-}
-
-// Single-shot generation
-const result = await llm.generate({
-  prompt: "Explain quantum computing in one paragraph.",
-  temperature: 0.7,
-  maxTokens: 256,
-});
-console.log(result.content);
-
-// Streaming generation
-let streamed = "";
-await llm.generateStream(
-  { prompt: "Write a short poem about the sea." },
-  (event) => {
-    if (event.type === "delta") streamed += event.content;
-    if (event.type === "done") {
-      console.log(streamed || event.content);
-      console.log("Done:", event.finishReason);
-    }
-  },
-);
-
-// Multi-turn session
-const sessionId = await llm.createSession({
-  systemPrompt: "You are a helpful assistant.",
-});
-const reply = await llm.sessionSend(sessionId, "What is 2+2?");
-console.log(reply.content);
-await llm.destroySession(sessionId);
-
-// Text intelligence
-const summary = await llm.summarize({
-  text: "Long article text here...",
-});
-console.log(summary.summary);
-
-const rewritten = await llm.rewrite({
-  text: "hey wanna grab lunch tmrw?",
-  tone: "formal",
-});
-console.log(rewritten.rewrittenText);
 ```
 
 ## Permissions
@@ -453,4 +453,4 @@ try {
 
 ## License
 
-MIT OR Apache-2.0
+MIT

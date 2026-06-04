@@ -6,10 +6,10 @@ Cross-platform access to native, on-device AI APIs for Rust.
 
 ## Key Features
 
+* **LLM:** On-device language model generation, summarization, and rewriting.
 * **Vision:** OCR (text recognition), barcode detection, face detection, and image classification.
 * **Speech:** Speech recognition (speech-to-text) and speech synthesis (text-to-speech).
 * **Text:** Language identification and translation.
-* **LLM:** On-device language model generation, summarization, and rewriting.
 
 ## Platform Support
 
@@ -92,7 +92,3 @@ cargo run -p device-ai --example device-ai -- vision-faces ./path/to/image.png
 cargo run -p device-ai --example device-ai -- llm-availability
 cargo run -p device-ai --example device-ai -- llm-generate "Explain Rust in one sentence."
 ```
-
----
-
-*This crate is maintained as part of the [tauri-plugin-device-ai-apis](https://github.com/hypothesi/tauri-plugin-device-ai-apis) project. It serves as the core Rust implementation for the Tauri plugin but can be used as a standalone library in any Rust project.*
