@@ -35,13 +35,13 @@ fn decode_image_source(image: &ImageSource) -> Result<Vec<u8>> {
             base64::engine::general_purpose::STANDARD
                 .decode(base64_data)
                 .map_err(|e| Error::ImageProcessingFailed {
-                    message: format!("Failed to decode base64 image: {}", e),
+                    message: format!("Failed to decode base64 image: {e}"),
                 })
         }
         ImageSource::Bytes(bytes) => Ok(bytes.clone()),
         ImageSource::FilePath(path) => {
             std::fs::read(path).map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Failed to read image file: {}", e),
+                message: format!("Failed to read image file: {e}"),
             })
         }
     }
@@ -174,7 +174,7 @@ pub fn speech_recognize(
         }
         Some(crate::models::AudioSource::FilePath(path)) => {
             let data = std::fs::read(path).map_err(|e| Error::SpeechRecognitionFailed {
-                message: format!("Failed to read audio file: {}", e),
+                message: format!("Failed to read audio file: {e}"),
             })?;
             speech_recognize_from_file_data(data, &options)
         }
@@ -197,7 +197,7 @@ fn decode_audio_base64(data: &str) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(base64_data)
         .map_err(|e| Error::SpeechRecognitionFailed {
-            message: format!("Failed to decode base64 audio: {}", e),
+            message: format!("Failed to decode base64 audio: {e}"),
         })
 }
 
@@ -248,7 +248,7 @@ fn speech_recognize_from_file_data(
         let temp_dir = std::env::temp_dir();
         let temp_path = temp_dir.join(format!("speech_recognition_{}.wav", uuid::Uuid::new_v4()));
         std::fs::write(&temp_path, &audio_data).map_err(|e| Error::SpeechRecognitionFailed {
-            message: format!("Failed to write temp audio file: {}", e),
+            message: format!("Failed to write temp audio file: {e}"),
         })?;
 
         let path_str = temp_path
@@ -291,7 +291,7 @@ fn speech_recognize_from_file_data(
 
                 let mut data = lock.lock().unwrap();
                 *data = Some(Err(crate::Error::SpeechRecognitionFailed {
-                    message: format!("Recognition error: {}", error_msg),
+                    message: format!("Recognition error: {error_msg}"),
                 }));
                 cvar.notify_one();
                 return;
@@ -697,7 +697,7 @@ pub fn vision_recognize_text(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Text recognition failed: {}", e),
+                message: format!("Text recognition failed: {e}"),
             })?;
 
         // Get results
@@ -802,7 +802,7 @@ pub fn vision_detect_barcodes(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Barcode detection failed: {}", e),
+                message: format!("Barcode detection failed: {e}"),
             })?;
 
         let results = request
@@ -1061,10 +1061,7 @@ fn detect_faces_ci(data: &[u8], options: FaceOptions) -> Result<Vec<Face>> {
         match result {
             Ok(res) => res,
             Err(exception) => Err(Error::ImageProcessingFailed {
-                message: format!(
-                    "Objective-C exception during face detection: {:?}",
-                    exception
-                ),
+                message: format!("Objective-C exception during face detection: {exception:?}"),
             }),
         }
     }
@@ -1121,7 +1118,7 @@ pub fn vision_detect_faces(image: ImageSource, options: FaceOptions) -> Result<V
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Face detection failed: {}", e),
+                message: format!("Face detection failed: {e}"),
             })?;
 
         // Retrieve results from the specific request objects we created
@@ -1318,7 +1315,7 @@ pub fn vision_classify_image(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Image classification failed: {}", e),
+                message: format!("Image classification failed: {e}"),
             })?;
 
         let results = request
