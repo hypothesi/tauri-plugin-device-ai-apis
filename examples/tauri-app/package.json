@@ -10,7 +10,9 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@hypothesi/tauri-plugin-device-ai-apis": "file:../../"
+    "@hypothesi/tauri-plugin-device-ai-apis": "file:../../",
+    "@iconify-icons/lucide": "1.2.135",
+    "@iconify/svelte": "5.2.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.0.0",

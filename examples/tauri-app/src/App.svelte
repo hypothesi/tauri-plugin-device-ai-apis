@@ -1,4 +1,44 @@
 <script>
+  import Icon from '@iconify/svelte'
+  import alertTriangleIcon from '@iconify-icons/lucide/alert-triangle'
+  import badgeInfoIcon from '@iconify-icons/lucide/badge-info'
+  import barChartIcon from '@iconify-icons/lucide/bar-chart-3'
+  import botIcon from '@iconify-icons/lucide/bot'
+  import brainIcon from '@iconify-icons/lucide/brain'
+  import checkCircleIcon from '@iconify-icons/lucide/check-circle'
+  import clipboardListIcon from '@iconify-icons/lucide/clipboard-list'
+  import cloudIcon from '@iconify-icons/lucide/cloud'
+  import eyeIcon from '@iconify-icons/lucide/eye'
+  import fileTextIcon from '@iconify-icons/lucide/file-text'
+  import flaskConicalIcon from '@iconify-icons/lucide/flask-conical'
+  import globeIcon from '@iconify-icons/lucide/globe-2'
+  import hourglassIcon from '@iconify-icons/lucide/hourglass'
+  import languagesIcon from '@iconify-icons/lucide/languages'
+  import lockIcon from '@iconify-icons/lucide/lock'
+  import mapPinIcon from '@iconify-icons/lucide/map-pin'
+  import messageCircleIcon from '@iconify-icons/lucide/message-circle'
+  import micIcon from '@iconify-icons/lucide/mic'
+  import mic2Icon from '@iconify-icons/lucide/mic-2'
+  import moveHorizontalIcon from '@iconify-icons/lucide/move-horizontal'
+  import pencilIcon from '@iconify-icons/lucide/pencil'
+  import playIcon from '@iconify-icons/lucide/play'
+  import plusCircleIcon from '@iconify-icons/lucide/plus-circle'
+  import refreshCwIcon from '@iconify-icons/lucide/refresh-cw'
+  import rotateCwIcon from '@iconify-icons/lucide/rotate-cw'
+  import scanFaceIcon from '@iconify-icons/lucide/scan-face'
+  import scrollTextIcon from '@iconify-icons/lucide/scroll-text'
+  import searchIcon from '@iconify-icons/lucide/search'
+  import shieldCheckIcon from '@iconify-icons/lucide/shield-check'
+  import smileIcon from '@iconify-icons/lucide/smile'
+  import squareIcon from '@iconify-icons/lucide/square'
+  import tagIcon from '@iconify-icons/lucide/tag'
+  import userIcon from '@iconify-icons/lucide/user'
+  import volume2Icon from '@iconify-icons/lucide/volume-2'
+  import wavesIcon from '@iconify-icons/lucide/waves'
+  import wrenchIcon from '@iconify-icons/lucide/wrench'
+  import xIcon from '@iconify-icons/lucide/x'
+  import xCircleIcon from '@iconify-icons/lucide/x-circle'
+
   import {
     getCapabilities,
     speech,
@@ -15,6 +55,36 @@
   // ============================================================================
   // State
   // ============================================================================
+
+  const capabilityItems = [
+    { key: 'speechRecognition', icon: micIcon, label: 'Speech Recognition' },
+    { key: 'speechSynthesis', icon: volume2Icon, label: 'Speech Synthesis' },
+    { key: 'textRecognition', icon: fileTextIcon, label: 'Text Recognition (OCR)' },
+    { key: 'barcodeDetection', icon: barChartIcon, label: 'Barcode Detection' },
+    { key: 'faceDetection', icon: smileIcon, label: 'Face Detection' },
+    { key: 'imageClassification', icon: tagIcon, label: 'Image Classification' },
+    { key: 'languageIdentification', icon: globeIcon, label: 'Language Identification' },
+    { key: 'translation', icon: languagesIcon, label: 'Translation' }
+  ]
+
+  const getToastIcon = (type) => {
+    if (type === 'error') return xCircleIcon
+    if (type === 'success') return checkCircleIcon
+    return badgeInfoIcon
+  }
+
+  const getChatRoleIcon = (role) => {
+    if (role === 'user') return userIcon
+    if (role === 'error') return alertTriangleIcon
+    return botIcon
+  }
+
+  const getTestStatusIcon = (status) => {
+    if (status === 'pass') return checkCircleIcon
+    if (status === 'fail') return xCircleIcon
+    if (status === 'error') return alertTriangleIcon
+    return badgeInfoIcon
+  }
 
   // Navigation
   let activeTab = $state('capabilities')
@@ -776,11 +846,11 @@
     <div class="toast-container">
       {#each toasts as toast (toast.id)}
         <div class="toast {toast.type}">
-          <span class="toast-icon">
-            {#if toast.type === 'error'}❌{:else if toast.type === 'success'}✅{:else}ℹ️{/if}
-          </span>
+          <Icon class="toast-icon" icon={getToastIcon(toast.type)} />
           <span class="toast-message">{toast.message}</span>
-          <button class="toast-dismiss" onclick={() => dismissToast(toast.id)}>×</button>
+          <button class="toast-dismiss" aria-label="Dismiss notification" onclick={() => dismissToast(toast.id)}>
+            <Icon class="icon" icon={xIcon} />
+          </button>
         </div>
       {/each}
     </div>
@@ -788,32 +858,32 @@
 
   <!-- Header -->
   <header class="header">
-    <h1>🤖 Device AI APIs</h1>
+    <h1><Icon class="icon title-icon" icon={botIcon} /> Device AI APIs</h1>
     <p class="subtitle">Tauri Plugin Demo</p>
   </header>
 
   <!-- Navigation -->
   <nav class="nav">
     <button class="nav-btn" class:active={activeTab === 'capabilities'} onclick={() => activeTab = 'capabilities'}>
-      📋 Capabilities
+      <Icon class="icon" icon={clipboardListIcon} /> Capabilities
     </button>
     <button class="nav-btn" class:active={activeTab === 'speech'} onclick={() => activeTab = 'speech'}>
-      🎤 Speech
+      <Icon class="icon" icon={micIcon} /> Speech
     </button>
     <button class="nav-btn" class:active={activeTab === 'vision'} onclick={() => activeTab = 'vision'}>
-      👁️ Vision
+      <Icon class="icon" icon={eyeIcon} /> Vision
     </button>
     <button class="nav-btn" class:active={activeTab === 'text'} onclick={() => activeTab = 'text'}>
-      📝 Text
+      <Icon class="icon" icon={fileTextIcon} /> Text
     </button>
     <button class="nav-btn" class:active={activeTab === 'llm'} onclick={() => activeTab = 'llm'}>
-      🧠 LLM
+      <Icon class="icon" icon={brainIcon} /> LLM
     </button>
     <button class="nav-btn" class:active={activeTab === 'logs'} onclick={() => activeTab = 'logs'}>
-      📜 Logs {#if logs.length > 0}<span class="badge">{logs.length}</span>{/if}
+      <Icon class="icon" icon={scrollTextIcon} /> Logs {#if logs.length > 0}<span class="badge">{logs.length}</span>{/if}
     </button>
     <button class="nav-btn" class:active={activeTab === 'tests'} onclick={() => activeTab = 'tests'}>
-      🧪 Tests
+      <Icon class="icon" icon={flaskConicalIcon} /> Tests
     </button>
   </nav>
 
@@ -830,15 +900,24 @@
           </div>
           <div class="info-item">
             <span class="label">Web Speech API</span>
-            <span class="value">{platformInfo.hasWebSpeech ? '✓ Available' : '✗ Not available'}</span>
+            <span class="value status-value" class:available={platformInfo.hasWebSpeech}>
+              <Icon class="icon" icon={platformInfo.hasWebSpeech ? checkCircleIcon : xCircleIcon} />
+              {platformInfo.hasWebSpeech ? 'Available' : 'Not available'}
+            </span>
           </div>
           <div class="info-item">
             <span class="label">Web Synthesis API</span>
-            <span class="value">{platformInfo.hasWebSynthesis ? '✓ Available' : '✗ Not available'}</span>
+            <span class="value status-value" class:available={platformInfo.hasWebSynthesis}>
+              <Icon class="icon" icon={platformInfo.hasWebSynthesis ? checkCircleIcon : xCircleIcon} />
+              {platformInfo.hasWebSynthesis ? 'Available' : 'Not available'}
+            </span>
           </div>
           <div class="info-item">
             <span class="label">Web Barcode API</span>
-            <span class="value">{platformInfo.hasWebBarcode ? '✓ Available' : '✗ Not available'}</span>
+            <span class="value status-value" class:available={platformInfo.hasWebBarcode}>
+              <Icon class="icon" icon={platformInfo.hasWebBarcode ? checkCircleIcon : xCircleIcon} />
+              {platformInfo.hasWebBarcode ? 'Available' : 'Not available'}
+            </span>
           </div>
         </div>
       </section>
@@ -847,29 +926,21 @@
         <h2>Device Capabilities</h2>
         {#if capabilities}
           <div class="capabilities-grid">
-            {#each [
-              { key: 'speechRecognition', icon: '🎤', label: 'Speech Recognition' },
-              { key: 'speechSynthesis', icon: '��', label: 'Speech Synthesis' },
-              { key: 'textRecognition', icon: '📝', label: 'Text Recognition (OCR)' },
-              { key: 'barcodeDetection', icon: '📊', label: 'Barcode Detection' },
-              { key: 'faceDetection', icon: '😊', label: 'Face Detection' },
-              { key: 'imageClassification', icon: '🏷️', label: 'Image Classification' },
-              { key: 'languageIdentification', icon: '🌍', label: 'Language Identification' },
-              { key: 'translation', icon: '🔄', label: 'Translation' }
-            ] as cap}
+            {#each capabilityItems as cap}
               <div class="capability-card" class:available={capabilities[cap.key]?.available}>
                 <div class="cap-header">
-                  <span class="cap-icon">{cap.icon}</span>
-                  <span class="cap-status">{capabilities[cap.key]?.available ? '✓' : '✗'}</span>
+                  <Icon class="cap-icon" icon={cap.icon} />
+                  <Icon class="cap-status" icon={capabilities[cap.key]?.available ? checkCircleIcon : xCircleIcon} />
                 </div>
                 <div class="cap-label">{cap.label}</div>
                 {#if capabilities[cap.key]?.available}
                   <div class="cap-details">
                     <span class:on-device={capabilities[cap.key]?.onDevice}>
-                      {capabilities[cap.key]?.onDevice ? '🔒 On-device' : '☁️ Cloud'}
+                      <Icon class="icon" icon={capabilities[cap.key]?.onDevice ? lockIcon : cloudIcon} />
+                      {capabilities[cap.key]?.onDevice ? 'On-device' : 'Cloud'}
                     </span>
                     {#if capabilities[cap.key]?.requiresPermission}
-                      <span>🔐 Requires permission</span>
+                      <span><Icon class="icon" icon={shieldCheckIcon} /> Requires permission</span>
                     {/if}
                   </div>
                 {/if}
@@ -884,7 +955,7 @@
     <!-- Speech Tab -->
     {:else if activeTab === 'speech'}
       <section class="panel">
-        <h2>🎤 Speech Recognition</h2>
+        <h2><Icon class="icon" icon={micIcon} /> Speech Recognition</h2>
         <p class="description">Convert spoken words to text using on-device speech recognition.</p>
 
         <div class="control-group">
@@ -904,13 +975,14 @@
 
         <div class="button-group">
           <button class="primary" onclick={startRecognition} disabled={isRecognizing}>
-            {isRecognizing ? '🎙️ Listening...' : '🎤 One-shot Recognition'}
+            <Icon class="icon" icon={isRecognizing ? mic2Icon : micIcon} />
+            {isRecognizing ? 'Listening...' : 'One-shot Recognition'}
           </button>
 
           {#if !streamingSessionId}
-            <button onclick={startStreamingRecognition}>▶️ Start Streaming</button>
+            <button onclick={startStreamingRecognition}><Icon class="icon" icon={playIcon} /> Start Streaming</button>
           {:else}
-            <button class="danger" onclick={stopStreamingRecognition}>⏹️ Stop Streaming</button>
+            <button class="danger" onclick={stopStreamingRecognition}><Icon class="icon" icon={squareIcon} /> Stop Streaming</button>
           {/if}
         </div>
 
@@ -927,7 +999,7 @@
       </section>
 
       <section class="panel">
-        <h2>🔊 Text-to-Speech</h2>
+        <h2><Icon class="icon" icon={volume2Icon} /> Text-to-Speech</h2>
         <p class="description">Convert text to spoken audio using available voices.</p>
 
         <div class="control-group">
@@ -941,7 +1013,7 @@
             <select id="tts-voice" bind:value={selectedVoice}>
               <option value="">Default Voice</option>
               {#each voices as voice}
-                <option value={voice.id}>{voice.name} ({voice.language}) {voice.isDefault ? '★' : ''}</option>
+                <option value={voice.id}>{voice.name} ({voice.language}) {voice.isDefault ? '(default)' : ''}</option>
               {/each}
             </select>
           </div>
@@ -959,9 +1031,10 @@
 
         <div class="button-group">
           <button class="primary" onclick={synthesizeSpeech} disabled={isSpeaking || !ttsText.trim()}>
-            {isSpeaking ? '🔊 Speaking...' : '🔊 Speak'}
+            <Icon class="icon" icon={volume2Icon} />
+            {isSpeaking ? 'Speaking...' : 'Speak'}
           </button>
-          <button onclick={loadVoices}>🔄 Refresh Voices</button>
+          <button onclick={loadVoices}><Icon class="icon" icon={refreshCwIcon} /> Refresh Voices</button>
         </div>
 
         {#if voices.length > 0}
@@ -974,7 +1047,7 @@
       <div class="vision-grid">
         <!-- OCR Panel -->
         <section class="panel">
-          <h2>📝 Text Recognition (OCR)</h2>
+          <h2><Icon class="icon" icon={fileTextIcon} /> Text Recognition (OCR)</h2>
           <p class="description">Extract text from images.</p>
 
           <div class="file-input-wrapper">
@@ -997,7 +1070,7 @@
 
         <!-- Barcode Panel -->
         <section class="panel">
-          <h2>📊 Barcode Detection</h2>
+          <h2><Icon class="icon" icon={barChartIcon} /> Barcode Detection</h2>
           <p class="description">Detect and decode QR codes and barcodes.</p>
 
           <div class="file-input-wrapper">
@@ -1027,7 +1100,7 @@
 
         <!-- Face Detection Panel -->
         <section class="panel">
-          <h2>😊 Face Detection</h2>
+          <h2><Icon class="icon" icon={scanFaceIcon} /> Face Detection</h2>
           <p class="description">Detect faces and analyze attributes.</p>
 
           <div class="control-row compact">
@@ -1060,10 +1133,10 @@
                   {#if face.rollAngle != null || face.yawAngle != null}
                     <div class="face-orientation">
                       {#if face.rollAngle != null}
-                        <span title="Head tilt">↻ Roll: {face.rollAngle.toFixed(1)}°</span>
+                        <span title="Head tilt"><Icon class="icon" icon={rotateCwIcon} /> Roll: {face.rollAngle.toFixed(1)}°</span>
                       {/if}
                       {#if face.yawAngle != null}
-                        <span title="Looking left/right">↔ Yaw: {face.yawAngle.toFixed(1)}°</span>
+                        <span title="Looking left/right"><Icon class="icon" icon={moveHorizontalIcon} /> Yaw: {face.yawAngle.toFixed(1)}°</span>
                       {/if}
                     </div>
                   {/if}
@@ -1071,15 +1144,15 @@
                   <!-- Bounding box info -->
                   {#if face.boundingBox}
                     <div class="face-bbox">
-                      📐 Position: ({(face.boundingBox.x * 100).toFixed(0)}%, {(face.boundingBox.y * 100).toFixed(0)}%)
-                      Size: {(face.boundingBox.width * 100).toFixed(0)}% × {(face.boundingBox.height * 100).toFixed(0)}%
+                      <Icon class="icon" icon={mapPinIcon} /> Position: ({(face.boundingBox.x * 100).toFixed(0)}%, {(face.boundingBox.y * 100).toFixed(0)}%)
+                      Size: {(face.boundingBox.width * 100).toFixed(0)}% by {(face.boundingBox.height * 100).toFixed(0)}%
                     </div>
                   {/if}
 
                   <!-- Landmarks -->
                   {#if face.landmarks}
                     <div class="face-landmarks">
-                      <span class="landmarks-title">👁️ Landmarks:</span>
+                      <span class="landmarks-title"><Icon class="icon" icon={eyeIcon} /> Landmarks:</span>
                       <div class="landmarks-grid">
                         {#if face.landmarks.leftEye}
                           <span>Left Eye: ({(face.landmarks.leftEye.x * 100).toFixed(0)}%, {(face.landmarks.leftEye.y * 100).toFixed(0)}%)</span>
@@ -1104,13 +1177,13 @@
                   {#if face.attributes}
                     <div class="face-attrs">
                       {#if face.attributes.smilingProbability != null}
-                        <span>😊 Smiling: {(face.attributes.smilingProbability * 100).toFixed(0)}%</span>
+                        <span><Icon class="icon" icon={smileIcon} /> Smiling: {(face.attributes.smilingProbability * 100).toFixed(0)}%</span>
                       {/if}
                       {#if face.attributes.leftEyeOpenProbability != null}
-                        <span>👁️ Left Eye Open: {(face.attributes.leftEyeOpenProbability * 100).toFixed(0)}%</span>
+                        <span><Icon class="icon" icon={eyeIcon} /> Left Eye Open: {(face.attributes.leftEyeOpenProbability * 100).toFixed(0)}%</span>
                       {/if}
                       {#if face.attributes.rightEyeOpenProbability != null}
-                        <span>👁️ Right Eye Open: {(face.attributes.rightEyeOpenProbability * 100).toFixed(0)}%</span>
+                        <span><Icon class="icon" icon={eyeIcon} /> Right Eye Open: {(face.attributes.rightEyeOpenProbability * 100).toFixed(0)}%</span>
                       {/if}
                     </div>
                   {/if}
@@ -1124,7 +1197,7 @@
 
         <!-- Image Classification Panel -->
         <section class="panel">
-          <h2>🏷️ Image Classification</h2>
+          <h2><Icon class="icon" icon={tagIcon} /> Image Classification</h2>
           <p class="description">Identify objects and scenes.</p>
 
           <div class="control-row compact">
@@ -1168,7 +1241,7 @@
     <!-- Text Tab -->
     {:else if activeTab === 'text'}
       <section class="panel">
-        <h2>🌍 Language Identification</h2>
+        <h2><Icon class="icon" icon={globeIcon} /> Language Identification</h2>
         <p class="description">Detect the language of a text passage.</p>
 
         <div class="control-group">
@@ -1188,7 +1261,8 @@
 
         <div class="button-group">
           <button class="primary" onclick={identifyLanguage} disabled={isIdentifyingLang || !langIdText.trim()}>
-            {isIdentifyingLang ? '🔍 Analyzing...' : '🌍 Identify Language'}
+            <Icon class="icon" icon={isIdentifyingLang ? searchIcon : globeIcon} />
+            {isIdentifyingLang ? 'Analyzing...' : 'Identify Language'}
           </button>
         </div>
 
@@ -1204,7 +1278,7 @@
       </section>
 
       <section class="panel coming-soon">
-        <h2>🔄 Translation</h2>
+        <h2><Icon class="icon" icon={languagesIcon} /> Translation</h2>
         <p class="description">Translate text between languages. (Coming soon)</p>
         <div class="placeholder">This feature will be available in a future update.</div>
       </section>
@@ -1213,12 +1287,13 @@
     {:else if activeTab === 'llm'}
       <!-- Availability & Model Info -->
       <section class="panel">
-        <h2>🧠 On-Device Language Model</h2>
+        <h2><Icon class="icon" icon={brainIcon} /> On-Device Language Model</h2>
         <p class="description">Generate text, have conversations, and use text intelligence powered by on-device AI.</p>
 
         <div class="button-group" style="margin-bottom: 1rem;">
           <button class="primary" onclick={checkLlmAvailability}>
-            {llmAvailability ? '🔄 Refresh' : '🔍 Check Availability'}
+            <Icon class="icon" icon={llmAvailability ? refreshCwIcon : searchIcon} />
+            {llmAvailability ? 'Refresh' : 'Check Availability'}
           </button>
         </div>
 
@@ -1229,7 +1304,8 @@
               <div class="info-item">
                 <span class="label">Available</span>
                 <span class="value" style="color: {llmAvailability.available ? '#22c55e' : '#ef4444'}">
-                  {llmAvailability.available ? '✅ Yes' : '❌ No'}
+                  <Icon class="icon" icon={llmAvailability.available ? checkCircleIcon : xCircleIcon} />
+                  {llmAvailability.available ? 'Yes' : 'No'}
                 </span>
               </div>
               {#if llmAvailability.reason}
@@ -1253,7 +1329,9 @@
                 </div>
                 <div class="info-item">
                   <span class="label">On-Device</span>
-                  <span class="value">{llmModelInfo.onDevice ? '✅' : '❌'}</span>
+                  <span class="value">
+                    <Icon class="icon" icon={llmModelInfo.onDevice ? checkCircleIcon : xCircleIcon} />
+                  </span>
                 </div>
               {/if}
             </div>
@@ -1263,7 +1341,7 @@
 
       <!-- Generation -->
       <section class="panel">
-        <h2>✍️ Text Generation</h2>
+        <h2><Icon class="icon" icon={pencilIcon} /> Text Generation</h2>
 
         <div class="control-group">
           <label for="llm-prompt">Prompt</label>
@@ -1288,10 +1366,12 @@
 
         <div class="button-group">
           <button class="primary" onclick={generateText} disabled={isGenerating || isStreaming || !llmPrompt.trim()}>
-            {isGenerating ? '⏳ Generating...' : '✍️ Generate'}
+            <Icon class="icon" icon={isGenerating ? hourglassIcon : pencilIcon} />
+            {isGenerating ? 'Generating...' : 'Generate'}
           </button>
           <button class="primary" onclick={streamText} disabled={isGenerating || isStreaming || !llmPrompt.trim()}>
-            {isStreaming ? '⏳ Streaming...' : '🌊 Stream'}
+            <Icon class="icon" icon={isStreaming ? hourglassIcon : wavesIcon} />
+            {isStreaming ? 'Streaming...' : 'Stream'}
           </button>
         </div>
 
@@ -1318,13 +1398,13 @@
 
       <!-- Sessions -->
       <section class="panel">
-        <h2>💬 Multi-Turn Session</h2>
+        <h2><Icon class="icon" icon={messageCircleIcon} /> Multi-Turn Session</h2>
         <p class="description">Have a back-and-forth conversation with context maintained across messages.</p>
 
         {#if !llmSessionId}
           <div class="button-group">
             <button class="primary" onclick={createLlmSession}>
-              🆕 Start Session
+              <Icon class="icon" icon={plusCircleIcon} /> Start Session
             </button>
           </div>
           <p class="hint">System prompt and parameters from above will be used for the session.</p>
@@ -1332,13 +1412,13 @@
           <div class="chat-container">
             {#each llmChatHistory as msg}
               <div class="chat-msg {msg.role}">
-                <span class="chat-role">{msg.role === 'user' ? '👤' : msg.role === 'error' ? '⚠️' : '🤖'}</span>
+                <Icon class="chat-role" icon={getChatRoleIcon(msg.role)} />
                 <div class="chat-content">{msg.content}</div>
               </div>
             {/each}
             {#if isSendingChat}
               <div class="chat-msg assistant">
-                <span class="chat-role">🤖</span>
+                <Icon class="chat-role" icon={botIcon} />
                 <div class="chat-content thinking">Thinking...</div>
               </div>
             {/if}
@@ -1357,16 +1437,17 @@
 
       <!-- Text Intelligence -->
       <section class="panel">
-        <h2>🔧 Text Intelligence</h2>
+        <h2><Icon class="icon" icon={wrenchIcon} /> Text Intelligence</h2>
 
         <!-- Summarize -->
         <div style="margin-bottom: 1.5rem;">
-          <h3 style="margin: 0 0 0.5rem;">📋 Summarize</h3>
+          <h3 style="margin: 0 0 0.5rem;"><Icon class="icon" icon={clipboardListIcon} /> Summarize</h3>
           <div class="control-group">
             <textarea bind:value={summarizeText} placeholder="Enter long text to summarize..." rows="4"></textarea>
           </div>
           <button class="primary" onclick={summarizeTextHandler} disabled={isSummarizing || !summarizeText.trim()}>
-            {isSummarizing ? '⏳ Summarizing...' : '📋 Summarize'}
+            <Icon class="icon" icon={isSummarizing ? hourglassIcon : clipboardListIcon} />
+            {isSummarizing ? 'Summarizing...' : 'Summarize'}
           </button>
           {#if summarizeResult}
             <div class="result-box">
@@ -1378,7 +1459,7 @@
 
         <!-- Rewrite -->
         <div>
-          <h3 style="margin: 0 0 0.5rem;">✏️ Rewrite</h3>
+          <h3 style="margin: 0 0 0.5rem;"><Icon class="icon" icon={pencilIcon} /> Rewrite</h3>
           <div class="control-group">
             <textarea bind:value={rewriteText} placeholder="Enter text to rewrite..." rows="3"></textarea>
           </div>
@@ -1393,7 +1474,8 @@
             </div>
           </div>
           <button class="primary" onclick={rewriteTextHandler} disabled={isRewriting || !rewriteText.trim()}>
-            {isRewriting ? '⏳ Rewriting...' : '✏️ Rewrite'}
+            <Icon class="icon" icon={isRewriting ? hourglassIcon : pencilIcon} />
+            {isRewriting ? 'Rewriting...' : 'Rewrite'}
           </button>
           {#if rewriteResult}
             <div class="result-box">
@@ -1408,7 +1490,7 @@
     {:else if activeTab === 'logs'}
       <section class="panel logs-panel">
         <div class="logs-header">
-          <h2>📜 Activity Logs</h2>
+          <h2><Icon class="icon" icon={scrollTextIcon} /> Activity Logs</h2>
           <button onclick={clearLogs} disabled={logs.length === 0}>Clear</button>
         </div>
 
@@ -1429,12 +1511,13 @@
     <!-- Tests Tab -->
     {:else if activeTab === 'tests'}
       <section class="panel">
-        <h2>🧪 End-to-End Tests</h2>
+        <h2><Icon class="icon" icon={flaskConicalIcon} /> End-to-End Tests</h2>
         <p class="description">Run automated tests using the sample data.</p>
 
         <div class="button-group">
           <button class="primary" onclick={runTests} disabled={isRunningTests}>
-            {isRunningTests ? `Running (${testProgress.current}/${testProgress.total})...` : '▶️ Run Tests'}
+            <Icon class="icon" icon={isRunningTests ? hourglassIcon : playIcon} />
+            {isRunningTests ? `Running (${testProgress.current}/${testProgress.total})...` : 'Run Tests'}
           </button>
         </div>
 
@@ -1443,13 +1526,7 @@
             {#each testResults as result}
               <div class="test-item {result.status}">
                 <div class="test-header">
-                  <span class="test-icon">
-                    {#if result.status === 'pass'}✅
-                    {:else if result.status === 'fail'}❌
-                    {:else if result.status === 'error'}⚠️
-                    {:else}cx
-                    {/if}
-                  </span>
+                  <Icon class="test-icon" icon={getTestStatusIcon(result.status)} />
                   <span class="test-name">{result.name}</span>
                   <span class="test-status-badge {result.status}">{result.status.toUpperCase()}</span>
                 </div>
@@ -1554,7 +1631,8 @@
     to { transform: translateX(0); opacity: 1; }
   }
   .toast-icon {
-    font-size: 1.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
     flex-shrink: 0;
   }
   .toast-message {
@@ -1577,8 +1655,25 @@
     color: #e4e4e7;
   }
 
+  .icon {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    vertical-align: -0.15em;
+  }
+
   .header { text-align: center; padding: 1.5rem 0; }
-  .header h1 { margin: 0; font-size: 2rem; }
+  .header h1 {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 2rem;
+  }
+  .title-icon {
+    width: 2rem;
+    height: 2rem;
+  }
   .subtitle { margin: 0.5rem 0 0; color: #71717a; }
 
   .nav {
@@ -1587,6 +1682,9 @@
     margin-bottom: 1.5rem; flex-wrap: wrap; justify-content: center;
   }
   .nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     background: transparent; border: none; color: #a1a1aa;
     padding: 0.75rem 1.25rem; border-radius: 8px; cursor: pointer;
     font-size: 0.9rem; font-weight: 500; transition: all 0.2s;
@@ -1602,6 +1700,12 @@
     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
     border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;
   }
+  .panel h2,
+  .panel h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
   .panel h2 { margin: 0 0 0.5rem; font-size: 1.25rem; }
   .description { color: #71717a; margin: 0 0 1.5rem; font-size: 0.9rem; }
   .coming-soon { opacity: 0.6; }
@@ -1613,6 +1717,15 @@
   .info-item { background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; }
   .info-item .label { display: block; font-size: 0.8rem; color: #71717a; margin-bottom: 0.25rem; }
   .info-item .value { font-weight: 500; }
+  .status-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: #ef4444;
+  }
+  .status-value.available {
+    color: #22c55e;
+  }
 
   .capability-card {
     background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);
@@ -1620,11 +1733,16 @@
   }
   .capability-card.available { opacity: 1; background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.3); }
   .cap-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
-  .cap-icon { font-size: 1.5rem; }
-  .cap-status { font-size: 1.25rem; }
+  .cap-icon { width: 1.5rem; height: 1.5rem; }
+  .cap-status { width: 1.25rem; height: 1.25rem; color: #ef4444; }
   .capability-card.available .cap-status { color: #22c55e; }
   .cap-label { font-weight: 500; margin-bottom: 0.5rem; }
   .cap-details { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.75rem; color: #71717a; }
+  .cap-details span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
   .cap-details .on-device { color: #22c55e; }
 
   .control-group { margin-bottom: 1rem; }
@@ -1646,6 +1764,10 @@
 
   .button-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     padding: 0.75rem 1.5rem; background: rgba(255,255,255,0.1);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
     color: #e4e4e7; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.2s;
