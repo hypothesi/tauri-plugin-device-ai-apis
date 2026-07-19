@@ -1,8 +1,8 @@
 # device-ai
 
-`device-ai` is a Rust crate for calling the AI APIs built into macOS and Windows. It
-has no Tauri dependency. Use it in a desktop Rust application when you need OCR,
-speech, image analysis, language identification, or local language-model APIs.
+`device-ai` is a Rust crate for calling the AI APIs built into macOS and Windows. Use it
+in a desktop Rust application when you need OCR, speech, image analysis, language
+identification, or local language-model APIs.
 
 The operating system and device decide what is available. Check capabilities before
 showing a feature or calling its API.
@@ -15,7 +15,6 @@ showing a feature or calling its API.
   access for speech recognition.
 
 On Linux and other unsupported targets, API calls return `Error::FeatureNotAvailable`.
-This crate does not provide direct iOS or Android implementations.
 
 ## Install
 
@@ -160,18 +159,19 @@ selects. Leave the default feature set enabled.
 ## Verify locally
 
 The crate includes a small command-line example for exercising the APIs on a real
-device:
+device. Run it from the crate directory:
 
 ```bash
-cargo run -p device-ai --example device-ai -- capabilities
-cargo run -p device-ai --example device-ai -- vision-ocr ./receipt.png
-cargo run -p device-ai --example device-ai -- speech-voices
+cargo run --example device-ai -- capabilities
+cargo run --example device-ai -- vision-ocr ./receipt.png
+cargo run --example device-ai -- speech-voices
 ```
 
-Run the workspace checks before changing or publishing code:
+Run the crate checks before changing or publishing code:
 
 ```bash
-npm run standards
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
 
