@@ -15,6 +15,12 @@ node_modules/
 dist-js
 dist
 
+# Native build state
+
+android/.gradle/
+android/local.properties
+.hermes/
+
 # AI
 
 specs
