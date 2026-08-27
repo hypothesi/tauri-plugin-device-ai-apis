@@ -11,7 +11,10 @@ Complete these steps once before the first signed-tag release.
    * Repository: `tauri-plugin-device-ai-apis`
    * Workflow file: `release.yml`
    * Environment: leave blank
-3. If npm does not allow Trusted Publishing yet because the package has never been published,
+3. Keep the publish job on npm 11.5.1 or newer. Older npm releases cannot exchange the Actions
+   OIDC token for a registry token, and the publish then fails with a `404 Not Found` on the
+   `PUT` rather than an authorization error.
+4. If npm does not allow Trusted Publishing yet because the package has never been published,
    publish the package once from a maintainer account with:
 
    ```bash

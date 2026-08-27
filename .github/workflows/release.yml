@@ -110,6 +110,12 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
+      # Trusted Publishing exchanges the Actions OIDC token for a registry token, which npm
+      # only knows how to do from 11.5.1 onward. Pin the npm release so the exchange does
+      # not depend on whichever npm the runner's Node happens to bundle.
+      - name: Install an npm release that supports Trusted Publishing
+        run: npm install --global npm@12.0.2
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux system dependencies
@@ -131,24 +137,24 @@ jobs:
       - name: Publish device-ai crate
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked -p device-ai
+        run: node ./scripts/publish-crate.mjs device-ai
 
       - name: Publish Tauri plugin crate
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: node ./scripts/publish-crate.mjs tauri-plugin-device-ai-apis
+
+      - name: Publish npm package
         run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if cargo publish --locked -p tauri-plugin-device-ai-apis; then
-              exit 0
-            fi
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
 
-            echo "device-ai may still be propagating through the crates.io index; retrying in 30 seconds"
-            sleep 30
-          done
+          if npm view "$name@$version" version > /dev/null 2>&1; then
+            echo "$name@$version is already on the npm registry. Skipping publish."
+            exit 0
+          fi
 
-          exit 1
-
-      - run: npm publish --provenance --access public
+          npm publish --provenance --access public
 
   create-github-release:
     needs: publish-release
