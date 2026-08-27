@@ -7,9 +7,8 @@ language identification, and conditional on-device LLM access.
 
 ## Features
 
-| Feature                 | iOS | Android | macOS | Windows  
-| ----------------------- | --- | ------- | ----- | ------- | 
-| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌‡      |
+| Feature                 | iOS | Android | macOS | Windows  |
+| ----------------------- | --- | ------- | ----- | -------- |
 | Speech Recognition      | ✅  | ✅      | ✅    | ✅       |
 | Text-to-Speech          | ✅  | ✅      | ✅    | ✅\*     |
 | Text Recognition (OCR)  | ✅  | ✅      | ✅    | ✅       |
@@ -17,23 +16,54 @@ language identification, and conditional on-device LLM access.
 | Face Detection          | ✅  | ✅      | ✅    | ❌       |
 | Image Classification    | ✅  | ✅      | ✅    | ❌       |
 | Language Identification | ✅  | ✅      | ✅    | ❌       |
+| Language Model (LLM)    | ✅† | ❌      | ✅†   | ❌       |
 
-Legend: ✅ Implemented | ❌ Not Available (yet)
+Legend: ✅ Implemented | ❌ Not Available
 
 \* Windows TTS completes synthesis, but the current Rust backend does not yet play the
 generated stream.
 
 † Requires macOS 26+ (Tahoe) or iOS 26+ with Apple FoundationModels. The feature
-compiles conditionally — if the SDK is not present, LLM commands return a "not available"
-error gracefully.
-
-‡ Windows Phi Silica APIs (`Microsoft.Windows.AI.Text`) are not yet accessible from Rust
-via the `windows` crate. Stubs return a clear "not available" error. Full support is
-planned once WinRT bindings are available.
+compiles conditionally. If the SDK is not present, LLM commands return a "not available"
+error gracefully. Windows LLM (Phi Silica) is not yet accessible from Rust.
 
 Linux is not currently supported due to the lack of a unified set of native AI
 APIs across distributions, but contributions to expand platform coverage are
 welcome.
+
+### Android OCR script models
+
+On Android, OCR uses ML Kit which ships separate recognizer models per script.
+Latin is bundled by default. To enable additional scripts, add the corresponding
+dependency to your app's `build.gradle.kts`:
+
+```kotlin
+// Japanese (kanji, hiragana, katakana)
+implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+
+// Chinese
+implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
+
+// Korean
+implementation("com.google.mlkit:text-recognition-korean:16.0.0")
+
+// Devanagari
+implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")
+```
+
+Then pass the script name when calling OCR:
+
+```typescript
+import { vision } from "@hypothesi/tauri-plugin-device-ai-apis";
+
+const result = await vision.recognizeText(
+   { base64: imageData },
+   { script: "japanese" },
+);
+```
+
+If a script dependency is not declared, the call returns a `FEATURE_NOT_AVAILABLE`
+error with the exact Gradle artifact ID to add.
 
 ## Installation
 

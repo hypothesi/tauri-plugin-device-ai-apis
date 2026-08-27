@@ -14,10 +14,16 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     _app: &AppHandle<R>,
     api: PluginApi<R, C>,
 ) -> crate::Result<DeviceAiApis<R>> {
+    // register_*_plugin returns PluginInvokeError, which is not directly
+    // convertible into device_ai::Error, so apply the shared mapper.
     #[cfg(target_os = "android")]
-    let handle = api.register_android_plugin("com.hypothesi.device_ai_apis", "DeviceAiPlugin")?;
+    let handle = api
+        .register_android_plugin("com.hypothesi.device_ai_apis", "DeviceAiPlugin")
+        .map_err(mobile_invoke_error)?;
     #[cfg(target_os = "ios")]
-    let handle = api.register_ios_plugin(init_plugin_device_ai_apis)?;
+    let handle = api
+        .register_ios_plugin(init_plugin_device_ai_apis)
+        .map_err(mobile_invoke_error)?;
     Ok(DeviceAiApis(handle))
 }
 
@@ -29,6 +35,43 @@ fn mobile_invoke_error(error: tauri::plugin::mobile::PluginInvokeError) -> crate
 }
 
 impl<R: Runtime> DeviceAiApis<R> {
+    // =========================================================================
+    // Capabilities
+    // =========================================================================
+
+    /// Get the AI capabilities available on this mobile platform.
+    ///
+    /// Mirrors the plugin's documented feature matrix for iOS/Android: the
+    /// Kotlin/Swift bridge implements speech recognition, synthesis, OCR,
+    /// barcode/face/image classification, and language identification.
+    /// Translation is not implemented upstream. Language model is gated per-OS
+    /// below (iOS 26+ only). These are static; if a specific device lacks a
+    /// feature, the corresponding call returns an error at runtime and the
+    /// caller is expected to fall back.
+    pub fn get_capabilities(&self) -> Capabilities {
+        Capabilities {
+            speech_recognition: FeatureStatus::available_on_device(true),
+            speech_synthesis: FeatureStatus::available_on_device(false),
+            text_recognition: FeatureStatus::available_on_device(false),
+            barcode_detection: FeatureStatus::available_on_device(false),
+            face_detection: FeatureStatus::available_on_device(false),
+            image_classification: FeatureStatus::available_on_device(false),
+            language_identification: FeatureStatus::available_on_device(false),
+            translation: FeatureStatus::unavailable(),
+            #[allow(clippy::needless_update)] // Android leaves LLM unavailable
+            language_model: {
+                #[cfg(target_os = "ios")]
+                {
+                    FeatureStatus::available_on_device(false)
+                }
+                #[cfg(not(target_os = "ios"))]
+                {
+                    FeatureStatus::unavailable()
+                }
+            },
+        }
+    }
+
     // =========================================================================
     // Speech Recognition
     // =========================================================================

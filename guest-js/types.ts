@@ -158,13 +158,31 @@ export interface BoundingBox {
 export type RecognitionLevel = "fast" | "accurate";
 
 /**
+ * Script model for Android OCR via ML Kit.
+ *
+ * Each value corresponds to a separate ML Kit dependency that the host app
+ * must declare in its `build.gradle.kts`. Latin is always available.
+ */
+export type OcrScript = "latin" | "japanese" | "chinese" | "korean" | "devanagari";
+
+/**
  * Options for OCR/text recognition.
  */
 export interface OcrOptions {
-  /** Languages to prioritize for recognition. */
+  /**
+   * Languages to prioritize for recognition (BCP-47 tags).
+   *
+   * Used on iOS, macOS, and Windows. On Android, use `script` instead.
+   */
   languages?: string[];
   /** Recognition level (fast vs accurate). */
   recognitionLevel?: RecognitionLevel;
+  /**
+   * Script model for Android OCR.
+   *
+   * Ignored on iOS/macOS/Windows (use `languages` there).
+   */
+  script?: OcrScript;
 }
 
 /**

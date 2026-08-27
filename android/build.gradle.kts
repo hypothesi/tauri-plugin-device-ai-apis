@@ -38,8 +38,17 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.0")
     implementation("com.google.android.material:material:1.7.0")
 
-    // ML Kit dependencies for Vision APIs
+    // ML Kit dependencies for Vision APIs.
+    //
+    // Latin OCR is always bundled. Other script models are compileOnly; host
+    // apps opt in by declaring the dependency in their own build.gradle.kts.
+    // This keeps the plugin lightweight while allowing full script coverage.
+    // See README for the opt-in instructions.
     implementation("com.google.mlkit:text-recognition:16.0.0")
+    compileOnly("com.google.mlkit:text-recognition-japanese:16.0.1")
+    compileOnly("com.google.mlkit:text-recognition-chinese:16.0.0")
+    compileOnly("com.google.mlkit:text-recognition-korean:16.0.0")
+    compileOnly("com.google.mlkit:text-recognition-devanagari:16.0.0")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
     implementation("com.google.mlkit:face-detection:16.1.6")
     implementation("com.google.mlkit:image-labeling:17.0.8")

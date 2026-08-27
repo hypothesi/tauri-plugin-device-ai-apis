@@ -351,12 +351,23 @@ pub struct BoundingBox {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OcrOptions {
-    /// Languages to prioritize for recognition.
+    /// Languages to prioritize for recognition (BCP-47 tags, e.g. "en-US", "ja-JP").
+    ///
+    /// Used on iOS, macOS, and Windows. On Android, the `script` field selects the
+    /// ML Kit recognizer model instead, since ML Kit ships separate models per script.
     #[serde(default)]
     pub languages: Vec<String>,
     /// Recognition level (fast vs accurate).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recognition_level: Option<RecognitionLevel>,
+    /// Script model for Android OCR.
+    ///
+    /// ML Kit ships separate recognizer models per script. The host app must declare
+    /// the corresponding Gradle dependency (see README) — otherwise the call returns
+    /// a `FEATURE_NOT_AVAILABLE` error at runtime. On iOS/macOS/Windows this field is
+    /// ignored in favor of `languages`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script: Option<OcrScript>,
 }
 
 impl OcrOptions {
@@ -385,6 +396,12 @@ impl OcrOptions {
         self.recognition_level = Some(recognition_level);
         self
     }
+
+    /// Set the OCR script model (Android only).
+    pub fn with_script(mut self, script: OcrScript) -> Self {
+        self.script = Some(script);
+        self
+    }
 }
 
 /// Level of recognition accuracy vs speed.
@@ -395,6 +412,27 @@ pub enum RecognitionLevel {
     Fast,
     /// Accurate recognition, may be slower.
     Accurate,
+}
+
+/// Script model for Android OCR via ML Kit.
+///
+/// Each variant corresponds to a separate ML Kit dependency. The host app must
+/// opt in by declaring the dependency in its `build.gradle.kts` — see the README
+/// for the exact artifact IDs. Latin is always available.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OcrScript {
+    /// Latin script (default, always available).
+    #[default]
+    Latin,
+    /// Japanese script (kanji, hiragana, katakana).
+    Japanese,
+    /// Chinese script.
+    Chinese,
+    /// Korean script.
+    Korean,
+    /// Devanagari script.
+    Devanagari,
 }
 
 /// Result of text recognition (OCR).
@@ -1208,6 +1246,7 @@ mod tests {
         let opts = OcrOptions::default();
         assert!(opts.languages.is_empty());
         assert!(opts.recognition_level.is_none());
+        assert!(opts.script.is_none());
     }
 
     #[test]
@@ -1220,6 +1259,51 @@ mod tests {
             serde_json::to_string(&RecognitionLevel::Accurate).unwrap(),
             "\"accurate\""
         );
+    }
+
+    #[test]
+    fn test_ocr_script_serialization() {
+        assert_eq!(
+            serde_json::to_string(&OcrScript::Latin).unwrap(),
+            "\"latin\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OcrScript::Japanese).unwrap(),
+            "\"japanese\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OcrScript::Chinese).unwrap(),
+            "\"chinese\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OcrScript::Korean).unwrap(),
+            "\"korean\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OcrScript::Devanagari).unwrap(),
+            "\"devanagari\""
+        );
+    }
+
+    #[test]
+    fn test_ocr_options_with_script() {
+        let opts = OcrOptions::new().with_script(OcrScript::Japanese);
+        assert_eq!(opts.script, Some(OcrScript::Japanese));
+
+        let json = serde_json::to_string(&opts).unwrap();
+        assert!(json.contains("\"script\":\"japanese\""));
+    }
+
+    #[test]
+    fn test_ocr_options_script_deserialization() {
+        let json = r#"{"script":"japanese"}"#;
+        let opts: OcrOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.script, Some(OcrScript::Japanese));
+    }
+
+    #[test]
+    fn test_ocr_script_default_is_latin() {
+        assert_eq!(OcrScript::default(), OcrScript::Latin);
     }
 
     #[test]

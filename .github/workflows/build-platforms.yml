@@ -1,0 +1,190 @@
+name: Build Platforms
+
+# Cross-platform compile gates beyond the Linux-only Test workflow:
+#
+# - rust-desktop: compiles the workspace on each desktop OS. The macOS runner
+#   is the ONLY CI place where `crates/device-ai/src/macos.rs` (cfg macos,
+#   objc2/Speech framework) compiles cheaply; the Windows runner covers
+#   windows.rs.
+# - rust-mobile-check: type-checks the workspace for Android/iOS targets.
+#   `cargo check` does not link, so no NDK is required.
+# - android-example: builds the example app's Android APK via the Tauri CLI,
+#   which compiles the Kotlin plugin (DeviceAiPlugin.kt) — the only gate that
+#   catches Kotlin compile errors (missed by every other job; see PR #5).
+# - ios-example: initializes Tauri's generated Swift dependency, builds the
+#   plugin package directly, then builds the example app for the simulator.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-desktop:
+    name: Rust ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+  rust-mobile-check:
+    name: Rust check ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # aarch64-apple-ios is deliberately absent: even `cargo check` needs
+        # Apple SDK headers for dependency build scripts on Linux — the iOS
+        # Rust code is compiled by the `ios-example` job on a macOS runner
+        # instead.
+        target: [aarch64-linux-android]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      # `cargo check` does not invoke the linker, so the Android NDK is not
+      # needed — this is a type-check gate only. The mobile cfg branch of the
+      # plugin (src/mobile.rs) compiles here.
+      - name: cargo check (no link)
+        run: cargo check --workspace --all-targets --target ${{ matrix.target }}
+
+  android-example:
+    name: Android example (Kotlin plugin)
+    runs-on: ubuntu-latest
+    env:
+      # NDK r26b — pinned exact version; referenced by both the sdkmanager
+      # packages input and the NDK env derivation below (single source of truth).
+      NDK_VERSION: '26.1.10909125'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-example
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'tools platform-tools ndk;${{ env.NDK_VERSION }}'
+      - name: Configure NDK environment
+        # setup-android@v4 exports ANDROID_SDK_ROOT but NOT NDK_HOME /
+        # ANDROID_NDK_ROOT; the NDK installs under
+        # ${ANDROID_SDK_ROOT}/ndk/<version>/ (standard sdkmanager layout).
+        run: |
+          NDK_PATH="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+          if [ ! -d "$NDK_PATH" ]; then
+            echo "ERROR: NDK directory not found at: $NDK_PATH"
+            ls -1 "${ANDROID_SDK_ROOT}/ndk/" 2>/dev/null || true
+            exit 1
+          fi
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
+      - name: Build example Android APK (debug, aarch64 only)
+        working-directory: examples/tauri-app
+        run: |
+          # Root install first: the example depends on the root package via
+          # `file:../../`, whose `prepare` script (husky) must resolve against
+          # the root node_modules — same order as the Test workflow.
+          npm ci --prefix ../..
+          # The example imports the plugin's JS package (file:../../), whose
+          # `main` points to dist-js/ — built by the root `npm run build`
+          # (same as the Test workflow's build-js-api step).
+          npm run build --prefix ../..
+          npm ci
+          # The example ships no gen/android project (it is generated locally);
+          # generate it on the fly. Init is idempotent when gen already exists.
+          npx -y tauri android init
+          npx -y tauri android build --apk --debug --target aarch64
+
+  ios-example:
+    name: iOS example (Swift plugin)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-example
+      - name: Build example iOS (simulator, no signing)
+        working-directory: examples/tauri-app
+        run: |
+          # Root install first: the example depends on the root package via
+          # `file:../../`, whose `prepare` script (husky) must resolve against
+          # the root node_modules — same order as the Test workflow.
+          npm ci --prefix ../..
+          # The example imports the plugin's JS package (file:../../), whose
+          # `main` points to dist-js/ — built by the root `npm run build`
+          # (same as the Test workflow's build-js-api step).
+          npm run build --prefix ../..
+          npm ci
+          # The example ships no gen/apple project (it is generated locally);
+          # generate it on the fly. Init is idempotent when gen already exists.
+          npx -y tauri ios init
+          # Build the plugin package directly. The app build compiles the Rust
+          # mobile bridge but does not guarantee that SwiftPM compiled the
+          # plugin's Swift source.
+          (
+            cd ../../ios
+            xcodebuild \
+              -scheme tauri-plugin-device-ai-apis \
+              -destination 'generic/platform=iOS Simulator' \
+              -sdk iphonesimulator \
+              build
+          )
+          # tauri CLI --target values are aarch64 | aarch64-sim | x86_64
+          # (NOT cargo triplets); aarch64-sim = Apple Silicon simulator.
+          npx -y tauri ios build --target aarch64-sim
+        # Simulator builds need no signing identity or provisioning profile;
+        # `xcodebuild ... CODE_SIGNING_ALLOWED=NO` is applied by tauri-cli
+        # for simulator destinations.

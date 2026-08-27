@@ -46,6 +46,8 @@
 mod capabilities;
 mod error;
 mod models;
+#[cfg(any(target_os = "macos", test))]
+pub mod speech_live_ctrl;
 
 #[cfg(target_os = "macos")]
 mod macos;

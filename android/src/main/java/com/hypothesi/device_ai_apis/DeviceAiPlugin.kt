@@ -30,7 +30,7 @@ import com.google.mlkit.vision.face.FaceLandmark
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import org.json.JSONArray
 import org.json.JSONObject
@@ -75,6 +75,7 @@ class ImageSourceArgs {
 class OcrOptionsArgs {
     var languages: Array<String>? = null
     var recognitionLevel: String? = null
+    var script: String? = null
 }
 
 @InvokeArg
@@ -389,10 +390,69 @@ class DeviceAiPlugin(private val activity: Activity) : Plugin(activity) {
             voiceArray.put(voiceObj)
         }
 
-        invoke.resolve(voiceArray)
+        invoke.resolveObject(voiceArray)
     }
 
     // MARK: - Vision
+
+    /**
+     * Create an ML Kit [TextRecognizer] for the requested script.
+     *
+     * Latin is always available. Other scripts require the host app to declare
+     * the corresponding ML Kit dependency. If the class is not on the classpath,
+     * returns null so the caller can reject with a clear error.
+     */
+    private fun createOcrRecognizer(script: String?): TextRecognizer? {
+        val resolvedScript = script?.lowercase() ?: "latin"
+
+        return when (resolvedScript) {
+            "latin" -> TextRecognition.getClient(
+                com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
+            )
+            "japanese" -> createScriptRecognizer(
+                "com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions"
+            )
+            "chinese" -> createScriptRecognizer(
+                "com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions"
+            )
+            "korean" -> createScriptRecognizer(
+                "com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions"
+            )
+            "devanagari" -> createScriptRecognizer(
+                "com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions"
+            )
+            else -> TextRecognition.getClient(
+                com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
+            )
+        }
+    }
+
+    /**
+     * Instantiate a script-specific recognizer via reflection.
+     *
+     * Returns null if the class is not available (host app did not declare the
+     * ML Kit dependency).
+     */
+    private fun createScriptRecognizer(className: String): TextRecognizer? {
+        return try {
+            val clazz = Class.forName(className)
+            val builder = clazz.getMethod("Builder").invoke(null) as Any
+            val buildMethod = builder.javaClass.getMethod("build")
+            val options = buildMethod.invoke(builder)
+            // `TextRecognition.getClient` is resolved reflectively as well:
+            // its parameter type (`com.google.mlkit.vision.text.TextRecognizerOptions`)
+            // is not on this module's compile classpath — only the Latin
+            // options class is bundled with the base artifact, and the script
+            // artifacts are compileOnly in the host app.
+            val getClient = TextRecognition::class.java.methods
+                .first { it.name == "getClient" && it.parameterCount == 1 }
+            getClient.invoke(null, options) as TextRecognizer
+        } catch (e: ClassNotFoundException) {
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     @Command
     fun visionRecognizeText(invoke: Invoke) {
@@ -406,7 +466,23 @@ class DeviceAiPlugin(private val activity: Activity) : Plugin(activity) {
         val imageWidth = inputImage.width.toFloat().coerceAtLeast(1f)
         val imageHeight = inputImage.height.toFloat().coerceAtLeast(1f)
 
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val script = args.options?.script
+        val recognizer = createOcrRecognizer(script)
+        if (recognizer == null) {
+            val artifact = when (script?.lowercase()) {
+                "japanese" -> "text-recognition-japanese"
+                "chinese" -> "text-recognition-chinese"
+                "korean" -> "text-recognition-korean"
+                "devanagari" -> "text-recognition-devanagari"
+                else -> "text-recognition-japanese"
+            }
+            invoke.reject(
+                "FEATURE_NOT_AVAILABLE",
+                "OCR script '$script' requires the ML Kit dependency " +
+                    "'com.google.mlkit:$artifact'. Add it to your app's build.gradle.kts."
+            )
+            return
+        }
 
         recognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
@@ -474,7 +550,7 @@ class DeviceAiPlugin(private val activity: Activity) : Plugin(activity) {
                     barcodeArray.put(barcodeObj)
                 }
 
-                invoke.resolve(barcodeArray)
+                invoke.resolveObject(barcodeArray)
             }
             .addOnFailureListener { e ->
                 invoke.reject("BARCODE_DETECTION_FAILED", e.message ?: "Unknown error")
@@ -560,7 +636,7 @@ class DeviceAiPlugin(private val activity: Activity) : Plugin(activity) {
                     faceArray.put(faceObj)
                 }
 
-                invoke.resolve(faceArray)
+                invoke.resolveObject(faceArray)
             }
             .addOnFailureListener { e ->
                 invoke.reject("FACE_DETECTION_FAILED", e.message ?: "Unknown error")
@@ -597,7 +673,7 @@ class DeviceAiPlugin(private val activity: Activity) : Plugin(activity) {
                     classificationArray.put(classificationObj)
                 }
 
-                invoke.resolve(classificationArray)
+                invoke.resolveObject(classificationArray)
             }
             .addOnFailureListener { e ->
                 invoke.reject("IMAGE_CLASSIFICATION_FAILED", e.message ?: "Unknown error")

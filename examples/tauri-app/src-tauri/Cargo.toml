@@ -20,6 +20,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.5", default-features = false, features = [] }
 
 [dependencies]
-tauri = { version = "2.10.2", features = [] }
+# Keep the tauri crate on the same major/minor as the example's
+# @tauri-apps/api npm package — tauri-cli hard-fails on a version mismatch
+# (see build-platforms.yml). ^2.10 of the plugin crate accepts 2.11.x, so
+# cargo resolves a single unified version.
+tauri = { version = "2.11", features = [] }
 tauri-plugin-device-ai-apis = { path = "../../../" }
 tauri-plugin-mcp-bridge = "0.8.2"
