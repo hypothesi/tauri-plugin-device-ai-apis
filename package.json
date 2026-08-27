@@ -3,6 +3,15 @@
   "version": "0.2.0",
   "description": "Tauri plugin for on-device AI APIs: speech recognition, text-to-speech, OCR, barcode detection, face detection, image classification, and language identification.",
   "author": "Hypothesi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hypothesi/tauri-plugin-device-ai-apis.git"
+  },
+  "homepage": "https://github.com/hypothesi/tauri-plugin-device-ai-apis#readme",
+  "bugs": {
+    "url": "https://github.com/hypothesi/tauri-plugin-device-ai-apis/issues"
+  },
   "keywords": [
     "tauri",
     "tauri-plugin",

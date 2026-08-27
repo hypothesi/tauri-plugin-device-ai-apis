@@ -54,6 +54,22 @@ function extractDeviceAiDependencyVersion() {
    return versionMatch[1];
 }
 
+function extractCargoRepository(relativePath) {
+   const filePath = path.join(rootDir, relativePath),
+      content = readText(relativePath),
+      match = content.match(/^repository = "([^"]+)"/mu);
+
+   if (!match) {
+      throw new Error(`Could not find a repository URL in ${filePath}.`);
+   }
+
+   return match[1];
+}
+
+function normalizeRepositoryURL(repositoryURL) {
+   return repositoryURL.replace(/^git\+/u, '').replace(/\.git$/u, '');
+}
+
 function normalizeTagVersion(tagValue) {
    if (!tagValue) {
       return null;
@@ -69,7 +85,10 @@ function normalizeTagVersion(tagValue) {
 }
 
 function main() {
-   const packageVersion = readJson('package.json').version,
+   const packageJson = readJson('package.json'),
+      packageVersion = packageJson.version,
+      packageRepositoryURL = packageJson.repository?.url ?? '',
+      cargoRepositoryURL = extractCargoRepository('Cargo.toml'),
       pluginCargoVersion = extractCargoVersion('Cargo.toml'),
       deviceAiVersion = extractCargoVersion(path.join('crates', 'device-ai', 'Cargo.toml')),
       deviceAiDependencyVersion = extractDeviceAiDependencyVersion(),
@@ -91,6 +110,16 @@ function main() {
    if (deviceAiDependencyVersion !== deviceAiVersion) {
       mismatches.push(
          `Cargo.toml depends on device-ai ${deviceAiDependencyVersion}, but crates/device-ai/Cargo.toml is ${deviceAiVersion}.`,
+      );
+   }
+
+   // npm rejects a provenance-signed publish whose package.json repository does not match
+   // the repository the workflow built from.
+   if (!packageRepositoryURL) {
+      mismatches.push('package.json must declare a repository URL for provenance-signed npm publishes.');
+   } else if (normalizeRepositoryURL(packageRepositoryURL) !== normalizeRepositoryURL(cargoRepositoryURL)) {
+      mismatches.push(
+         `package.json repository ${packageRepositoryURL} does not match Cargo.toml repository ${cargoRepositoryURL}.`,
       );
    }
 
