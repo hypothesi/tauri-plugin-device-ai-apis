@@ -69,6 +69,9 @@ pub enum Error {
     #[error("Language model content filtered: {message}")]
     LlmContentFiltered { message: String },
 
+    #[error("Language model context window exceeded: {message}")]
+    LlmContextExceeded { message: String },
+
     // General input / platform errors
     #[error("Invalid argument: {message}")]
     InvalidArgument { message: String },
@@ -102,6 +105,7 @@ impl Error {
             Error::LlmGenerationFailed { .. } => "LLM_GENERATION_FAILED",
             Error::LlmSessionNotFound { .. } => "LLM_SESSION_NOT_FOUND",
             Error::LlmContentFiltered { .. } => "LLM_CONTENT_FILTERED",
+            Error::LlmContextExceeded { .. } => "LLM_CONTEXT_EXCEEDED",
             Error::InvalidArgument { .. } => "INVALID_ARGUMENTS",
             Error::Platform(_) => "PLATFORM_ERROR",
             Error::Io(_) => "IO_ERROR",
@@ -149,6 +153,10 @@ impl Error {
             }),
             Error::LlmNotAvailable { reason } => Some(ErrorDetails {
                 reason: Some(reason.clone()),
+                ..Default::default()
+            }),
+            Error::LlmContextExceeded { message } => Some(ErrorDetails {
+                reason: Some(message.clone()),
                 ..Default::default()
             }),
             _ => None,
@@ -330,6 +338,10 @@ mod tests {
                 message: "test".to_string(),
             }
             .code(),
+            Error::LlmContextExceeded {
+                message: "test".to_string(),
+            }
+            .code(),
             Error::InvalidArgument {
                 message: "test".to_string(),
             }
@@ -463,6 +475,13 @@ mod tests {
             }
             .to_string(),
             "Language model content filtered: safety policy"
+        );
+        assert_eq!(
+            Error::LlmContextExceeded {
+                message: "prompt exceeds 4096 tokens".to_string()
+            }
+            .to_string(),
+            "Language model context window exceeded: prompt exceeds 4096 tokens"
         );
         assert_eq!(
             Error::Platform("test".to_string()).to_string(),

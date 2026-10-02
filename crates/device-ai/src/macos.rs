@@ -2083,9 +2083,29 @@ mod llm_ffi {
             s
         };
 
-        // Check for Swift-side error envelope: {"error":"..."}
+        // Check for Swift-side error envelope: {"error":"...", "code":"..."}
         if let Ok(err_obj) = serde_json::from_str::<serde_json::Value>(&json_str) {
             if let Some(err_msg) = err_obj.get("error").and_then(|v| v.as_str()) {
+                let code = err_obj.get("code").and_then(|v| v.as_str());
+                let lower = err_msg.to_lowercase();
+                if code == Some("LLM_CONTEXT_EXCEEDED")
+                    || (lower.contains("context")
+                        && (lower.contains("exceed")
+                            || lower.contains("limit")
+                            || lower.contains("length")))
+                {
+                    return Err(Error::LlmContextExceeded {
+                        message: err_msg.to_string(),
+                    });
+                }
+                if code == Some("LLM_CONTENT_FILTERED")
+                    || lower.contains("guardrail")
+                    || lower.contains("safety")
+                {
+                    return Err(Error::LlmContentFiltered {
+                        message: err_msg.to_string(),
+                    });
+                }
                 if err_msg.starts_with("Session not found") {
                     return Err(Error::LlmSessionNotFound {
                         session_id: err_msg

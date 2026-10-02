@@ -12,6 +12,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import type {
   LlmAvailability,
   LlmModelInfo,
+  LlmModelTargetInfo,
   LlmGenerateOptions,
   LlmGenerateResult,
   LlmStreamEvent,
@@ -56,6 +57,25 @@ export async function getModelInfo(): Promise<LlmModelInfo> {
     throw new Error("LLM model info requires Tauri runtime");
   }
   return invoke<LlmModelInfo>("plugin:device-ai-apis|llm_get_model_info");
+}
+
+/**
+ * List available model targets supported by the device's LLM provider.
+ *
+ * @returns Array of available model targets (e.g., system on-device and Private Cloud Compute).
+ */
+export async function listModelTargets(): Promise<LlmModelTargetInfo[]> {
+  const info = await getModelInfo();
+  return (
+    info.availableTargets ?? [
+      {
+        id: info.id,
+        name: info.name,
+        contextWindow: info.contextWindow,
+        onDevice: info.onDevice,
+      },
+    ]
+  );
 }
 
 /**

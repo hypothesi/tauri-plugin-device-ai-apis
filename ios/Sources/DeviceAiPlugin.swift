@@ -182,6 +182,7 @@ class LlmGenerateOptionsInner: Decodable {
     let prompt: String
     let images: [ImageSourceArgs]?
     let responseSchema: AnyCodableDTO?
+    let modelTarget: String?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -195,6 +196,7 @@ class LlmGenerateArgs: Decodable {
 }
 
 class LlmSessionOptionsInner: Decodable {
+    let modelTarget: String?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -420,6 +422,26 @@ func llmGenerationFailed(_ message: String) -> PluginError {
 
 func llmSessionNotFound(_ sessionId: String) -> PluginError {
     return PluginError(code: "LLM_SESSION_NOT_FOUND", message: "Language model session not found: \(sessionId)")
+}
+
+func llmContextExceeded(_ message: String) -> PluginError {
+    return PluginError(code: "LLM_CONTEXT_EXCEEDED", message: "Language model context window exceeded: \(message)")
+}
+
+func llmContentFiltered(_ message: String) -> PluginError {
+    return PluginError(code: "LLM_CONTENT_FILTERED", message: "Language model content filtered: \(message)")
+}
+
+func mapLlmError(_ error: Error) -> PluginError {
+    let desc = error.localizedDescription
+    let lower = desc.lowercased()
+    if lower.contains("context") && (lower.contains("exceed") || lower.contains("limit") || lower.contains("length")) {
+        return llmContextExceeded(desc)
+    }
+    if lower.contains("guardrail") || lower.contains("safety") || lower.contains("filter") {
+        return llmContentFiltered(desc)
+    }
+    return llmGenerationFailed(desc)
 }
 
 // MARK: - Plugin Implementation
@@ -1489,6 +1511,20 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                     "multimodal": true,
                     "structuredOutput": true,
                 ] as [String: Any],
+                "availableTargets": [
+                    [
+                        "id": "system",
+                        "name": "Apple Foundation Models (On-Device)",
+                        "contextWindow": 4096,
+                        "onDevice": true
+                    ],
+                    [
+                        "id": "private-cloud-compute",
+                        "name": "Apple Foundation Models (Private Cloud Compute)",
+                        "contextWindow": 32768,
+                        "onDevice": false
+                    ]
+                ] as [[String: Any]],
             ] as [String: Any])
         } else {
             invoke.reject(llmNotAvailable("Requires iOS 26 or later"))
@@ -1540,7 +1576,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                         "finishReason": "stop",
                     ] as [String: Any])
                 } catch {
-                    invoke.reject(llmGenerationFailed(error.localizedDescription))
+                    invoke.reject(mapLlmError(error))
                 }
             }
         } else {
@@ -1600,7 +1636,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                         "finishReason": "stop",
                     ] as [String: Any])
                 } catch {
-                    invoke.reject(llmGenerationFailed(error.localizedDescription))
+                    invoke.reject(mapLlmError(error))
                 }
             }
         } else {

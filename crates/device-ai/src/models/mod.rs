@@ -803,6 +803,20 @@ pub struct LlmModelCapabilities {
     pub structured_output: bool,
 }
 
+/// Information about an available model target (e.g., system on-device vs Private Cloud Compute).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmModelTargetInfo {
+    /// Target identifier (e.g., "system", "private-cloud-compute").
+    pub id: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Maximum context window in tokens (e.g., 4096 for system, 32768 for PCC).
+    pub context_window: u32,
+    /// Whether this target runs entirely on-device.
+    pub on_device: bool,
+}
+
 /// Information about the on-device language model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -819,6 +833,9 @@ pub struct LlmModelInfo {
     pub on_device: bool,
     /// Model capabilities.
     pub capabilities: LlmModelCapabilities,
+    /// Available model targets or sub-models supported by this provider.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_targets: Vec<LlmModelTargetInfo>,
 }
 
 /// Options for language model text generation.
@@ -833,6 +850,9 @@ pub struct LlmGenerateOptions {
     /// Optional JSON schema constraining structured output.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_schema: Option<serde_json::Value>,
+    /// Optional model target architecture (e.g., "system", "private-cloud-compute").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_target: Option<String>,
     /// Optional system prompt to set model behavior.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -860,6 +880,7 @@ impl LlmGenerateOptions {
             prompt: prompt.into(),
             images: None,
             response_schema: None,
+            model_target: None,
             system_prompt: None,
             temperature: None,
             max_tokens: None,
@@ -886,6 +907,12 @@ impl LlmGenerateOptions {
     /// Set an optional JSON schema to constrain output generation.
     pub fn response_schema(mut self, schema: serde_json::Value) -> Self {
         self.response_schema = Some(schema);
+        self
+    }
+
+    /// Set the model target (e.g., "system", "private-cloud-compute").
+    pub fn model_target(mut self, model_target: impl Into<String>) -> Self {
+        self.model_target = Some(model_target.into());
         self
     }
 
@@ -1001,6 +1028,9 @@ pub enum LlmStreamEvent {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmSessionOptions {
+    /// Optional model target architecture (e.g., "system", "private-cloud-compute").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_target: Option<String>,
     /// Optional system prompt to set model behavior for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -1588,6 +1618,7 @@ mod tests {
             prompt: "Hello".to_string(),
             images: None,
             response_schema: None,
+            model_target: None,
             system_prompt: Some("Be helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(512),
@@ -1742,11 +1773,28 @@ mod tests {
                 multimodal: true,
                 structured_output: true,
             },
+            available_targets: vec![
+                LlmModelTargetInfo {
+                    id: "system".to_string(),
+                    name: "Apple FM On-Device".to_string(),
+                    context_window: 4096,
+                    on_device: true,
+                },
+                LlmModelTargetInfo {
+                    id: "private-cloud-compute".to_string(),
+                    name: "Apple FM Private Cloud Compute".to_string(),
+                    context_window: 32768,
+                    on_device: false,
+                },
+            ],
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"contextWindow\":4096"));
         assert!(json.contains("\"onDevice\":true"));
         assert!(json.contains("\"streaming\":true"));
+        assert!(json.contains("\"availableTargets\""));
+        assert!(json.contains("\"private-cloud-compute\""));
+        assert!(json.contains("32768"));
     }
 
     #[test]

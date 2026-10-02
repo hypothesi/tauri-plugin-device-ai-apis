@@ -29,6 +29,7 @@ export type DeviceAiErrorCode =
   | "LLM_GENERATION_FAILED"
   | "LLM_SESSION_NOT_FOUND"
   | "LLM_CONTENT_FILTERED"
+  | "LLM_CONTEXT_EXCEEDED"
   | "UNKNOWN";
 
 /**
@@ -174,4 +175,11 @@ export function isLanguageNotSupported(error: unknown): boolean {
  */
 export function isNoSpeechDetected(error: unknown): boolean {
   return normalizeDeviceAiError(error).code === "NO_SPEECH_DETECTED";
+}
+
+/**
+ * Check if the language model context window was exceeded based on the error.
+ */
+export function isLlmContextExceeded(error: unknown): boolean {
+  return normalizeDeviceAiError(error).code === "LLM_CONTEXT_EXCEEDED";
 }

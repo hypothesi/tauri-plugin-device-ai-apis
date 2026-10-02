@@ -167,10 +167,25 @@ private func jsonCString<T: Encodable>(_ value: T) -> UnsafeMutablePointer<CChar
     return strdup(str)
 }
 
-/// Return a JSON error C string.
-private func errorCString(_ message: String) -> UnsafeMutablePointer<CChar> {
+/// Return a JSON error C string with optional programmatic code.
+private func errorCString(_ message: String, code: String? = nil) -> UnsafeMutablePointer<CChar> {
     let escaped = message.replacingOccurrences(of: "\"", with: "\\\"")
+    if let code = code {
+        return strdup("{\"error\":\"\(escaped)\",\"code\":\"\(code)\"}")
+    }
     return strdup("{\"error\":\"\(escaped)\"}")
+}
+
+private func mapError(_ error: Error) -> (message: String, code: String?) {
+    let desc = error.localizedDescription
+    let lower = desc.lowercased()
+    if lower.contains("context") && (lower.contains("exceed") || lower.contains("limit") || lower.contains("length")) {
+        return (desc, "LLM_CONTEXT_EXCEEDED")
+    }
+    if lower.contains("guardrail") || lower.contains("safety") || lower.contains("filter") {
+        return (desc, "LLM_CONTENT_FILTERED")
+    }
+    return (desc, nil)
 }
 
 /// Decode JSON from a C string pointer.
@@ -196,12 +211,13 @@ private func makeGenerationOptions(
     )
 }
 
-/// Create a LanguageModelSession with optional system prompt.
+/// Create a LanguageModelSession with optional system prompt and target.
 private func makeSession(
     systemPrompt: String?,
     temperature: Double?,
     maxTokens: Int?,
-    seed: UInt64?
+    seed: UInt64?,
+    modelTarget: String? = nil
 ) -> LanguageModelSession {
     let model = SystemLanguageModel(guardrails: .default)
     guard let systemPrompt, !systemPrompt.isEmpty else {
@@ -241,6 +257,7 @@ private struct GenerateOptionsDTO: Decodable {
     let prompt: String
     let images: [ImageSourceDTO]?
     let responseSchema: AnyCodableDTO?
+    let modelTarget: String?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -249,17 +266,18 @@ private struct GenerateOptionsDTO: Decodable {
     let seed: UInt64?
 
     enum CodingKeys: String, CodingKey {
-        case prompt, images, responseSchema, systemPrompt, temperature, maxTokens, topP, topK, seed
+        case prompt, images, responseSchema, modelTarget, systemPrompt, temperature, maxTokens, topP, topK, seed
     }
 }
 
 private struct SessionOptionsDTO: Decodable {
+    let modelTarget: String?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
 
     enum CodingKeys: String, CodingKey {
-        case systemPrompt, temperature, maxTokens
+        case modelTarget, systemPrompt, temperature, maxTokens
     }
 }
 
@@ -289,6 +307,17 @@ private struct AvailabilityDTO: Encodable {
     let reason: String?
 }
 
+private struct ModelTargetInfoDTO: Encodable {
+    let id: String
+    let name: String
+    let contextWindow: Int
+    let onDevice: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, contextWindow, onDevice
+    }
+}
+
 private struct ModelInfoDTO: Encodable {
     let id: String
     let name: String
@@ -296,9 +325,10 @@ private struct ModelInfoDTO: Encodable {
     let contextWindow: Int
     let onDevice: Bool
     let capabilities: ModelCapabilitiesDTO
+    let availableTargets: [ModelTargetInfoDTO]
 
     enum CodingKeys: String, CodingKey {
-        case id, name, provider, contextWindow, onDevice, capabilities
+        case id, name, provider, contextWindow, onDevice, capabilities, availableTargets
     }
 }
 
@@ -387,6 +417,20 @@ public func checkAvailability() -> UnsafeMutablePointer<CChar>? {
 
 @_cdecl("swift_llm_get_model_info")
 public func getModelInfo() -> UnsafeMutablePointer<CChar>? {
+    let targets = [
+        ModelTargetInfoDTO(
+            id: "system",
+            name: "Apple Foundation Models (On-Device)",
+            contextWindow: 4096,
+            onDevice: true
+        ),
+        ModelTargetInfoDTO(
+            id: "private-cloud-compute",
+            name: "Apple Foundation Models (Private Cloud Compute)",
+            contextWindow: 32768,
+            onDevice: false
+        )
+    ]
     let dto = ModelInfoDTO(
         id: "apple-foundation-model",
         name: "Apple Foundation Model",
@@ -405,7 +449,8 @@ public func getModelInfo() -> UnsafeMutablePointer<CChar>? {
             rewrite: true,
             multimodal: true,
             structuredOutput: true
-        )
+        ),
+        availableTargets: targets
     )
     return jsonCString(dto)
 }
@@ -451,7 +496,8 @@ public func generate(_ optionsJSON: UnsafePointer<CChar>) -> UnsafeMutablePointe
         )
         return jsonCString(result)
     } catch {
-        return errorCString("Generation failed: \(error.localizedDescription)")
+        let (msg, code) = mapError(error)
+        return errorCString("Generation failed: \(msg)", code: code)
     }
 }
 
@@ -579,7 +625,8 @@ public func sessionSend(
         )
         return jsonCString(result)
     } catch {
-        return errorCString("Session send failed: \(error.localizedDescription)")
+        let (msg, code) = mapError(error)
+        return errorCString("Session send failed: \(msg)", code: code)
     }
 }
 

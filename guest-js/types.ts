@@ -459,6 +459,20 @@ export interface LlmModelCapabilities {
 }
 
 /**
+ * Information about an available model target architecture or tier.
+ */
+export interface LlmModelTargetInfo {
+  /** Target identifier (e.g. "system", "private-cloud-compute"). */
+  id: string;
+  /** Human-readable model name. */
+  name: string;
+  /** Maximum context window in tokens (e.g. 4096 or 32768). */
+  contextWindow: number;
+  /** Whether processing runs entirely on-device. */
+  onDevice: boolean;
+}
+
+/**
  * Information about the on-device language model.
  */
 export interface LlmModelInfo {
@@ -474,6 +488,8 @@ export interface LlmModelInfo {
   onDevice: boolean;
   /** Model capabilities. */
   capabilities: LlmModelCapabilities;
+  /** Available model targets or scaling tiers supported by this provider. */
+  availableTargets?: LlmModelTargetInfo[];
 }
 
 /**
@@ -486,6 +502,8 @@ export interface LlmGenerateOptions {
   images?: ImageSource[];
   /** Optional JSON schema (object or string) constraining structured output. */
   responseSchema?: Record<string, unknown> | string;
+  /** Optional model target architecture (e.g. "system", "private-cloud-compute"). */
+  modelTarget?: "system" | "private-cloud-compute" | string;
   /** Optional system prompt to guide the model's behavior. */
   systemPrompt?: string;
   /** Sampling temperature (0.0 to 2.0). */
@@ -543,6 +561,8 @@ export type LlmStreamEvent =
  * Options for creating a multi-turn session.
  */
 export interface LlmSessionOptions {
+  /** Optional model target architecture (e.g. "system", "private-cloud-compute"). */
+  modelTarget?: "system" | "private-cloud-compute" | string;
   /** Optional system prompt for the session. */
   systemPrompt?: string;
   /** Default temperature for the session. */
