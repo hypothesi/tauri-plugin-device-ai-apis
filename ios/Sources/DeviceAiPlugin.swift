@@ -9,6 +9,9 @@ import NaturalLanguage
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
+#if canImport(Translation)
+import Translation
+#endif
 
 // MARK: - Argument Types
 
@@ -85,6 +88,23 @@ class VisionClassifyImageArgs: Decodable {
 
 class TextIdentifyLanguageArgs: Decodable {
     let text: String
+}
+
+class TextCheckTranslationAvailabilityArgs: Decodable {
+    let from: String
+    let to: String
+}
+
+class TranslationAvailabilityResult: Encodable {
+    let status: String
+    let sourceLanguage: String
+    let targetLanguage: String
+
+    init(status: String, sourceLanguage: String, targetLanguage: String) {
+        self.status = status
+        self.sourceLanguage = sourceLanguage
+        self.targetLanguage = targetLanguage
+    }
 }
 
 class TextTranslateArgs: Decodable {
@@ -271,14 +291,54 @@ struct TranslationResult: Encodable {
 struct PluginError: Encodable {
     let code: String
     let message: String
+    let details: [String: String]?
+
+    init(code: String, message: String, details: [String: String]? = nil) {
+        self.code = code
+        self.message = message
+        self.details = details
+    }
+}
+
+// Tauri's `Invoke.reject` takes a String; the plugin builds structured
+// PluginError values throughout. This overload JSON-encodes the structured
+// error so the JS side can parse `code`/`message`, falling back to the plain
+// message if encoding fails. Defined once here instead of changing every
+// reject call site.
+extension Tauri.Invoke {
+    func reject(_ error: PluginError) {
+        if let data = try? JSONEncoder().encode(error),
+           let json = String(data: data, encoding: .utf8)
+        {
+            reject(json)
+        } else {
+            reject(error.message)
+        }
+    }
 }
 
 func featureNotAvailable(_ feature: String) -> PluginError {
-    return PluginError(code: "FEATURE_NOT_AVAILABLE", message: "Feature not available: \(feature)")
+    return PluginError(
+        code: "FEATURE_NOT_AVAILABLE",
+        message: "Feature not available on this platform: \(feature)",
+        details: ["feature": feature]
+    )
 }
 
 func permissionDenied(_ permission: String) -> PluginError {
-    return PluginError(code: "PERMISSION_DENIED", message: "Permission denied: \(permission)")
+    return PluginError(
+        code: "PERMISSION_DENIED",
+        message: "Permission denied: \(permission)",
+        details: ["permission": permission]
+    )
+}
+
+func permissionRequired(_ permission: String) -> PluginError {
+    return PluginError(
+        code: "PERMISSION_REQUIRED",
+        message: "Permission required: \(permission)",
+        details: ["permission": permission]
+    )
 }
 
 func speechRecognitionFailed(_ message: String) -> PluginError {
@@ -306,6 +366,33 @@ class DeviceAiPlugin: Plugin {
     private var audioEngine: AVAudioEngine?
     private var activeSessions: [String: SFSpeechRecognitionTask] = [:]
     private let speechSynthesizer = AVSpeechSynthesizer()
+
+    // Live-session state. Mirrors `crates/device-ai/src/speech_live_ctrl.rs`
+    // (see SpeechLiveConstants below) — update both together.
+    private var liveTimer: Timer?
+    private var liveStartedAt: Date?
+    private var liveLastResultAt: Date?
+    private var liveBestText: String = ""
+    private var liveEndAudioSentAt: Date?
+    private var liveInvoke: Invoke?
+
+    /// Timing constants for live speech recognition.
+    ///
+    /// Mirrors `speech_live_ctrl.rs` (SILENCE_LIMIT / NO_SPEECH_LIMIT /
+    /// HARD_CAP / FINAL_GRACE). Keep the values in sync with the Rust module.
+    private enum SpeechLiveConstants {
+        /// End-of-utterance silence (partial results stopped arriving) after
+        /// text was seen → send `endAudio`.
+        static let silenceLimit: TimeInterval = 1.2
+        /// Hard budget without any recognized text → "no speech" error.
+        static let noSpeechLimit: TimeInterval = 8
+        /// Hard cap on total session length → finalize with `endAudio`.
+        static let hardCap: TimeInterval = 30
+        /// Grace after `endAudio` for the final result to arrive.
+        static let finalGrace: TimeInterval = 10
+        /// Decision-loop tick.
+        static let tick: TimeInterval = 0.5
+    }
 
     // MARK: - Capabilities
 
@@ -418,7 +505,10 @@ class DeviceAiPlugin: Plugin {
             return
         }
 
-        recognitionRequest.shouldReportPartialResults = false
+        // Partial results are required: with `false` the recognizer only
+        // reports a final result after `endAudio`, so silence detection
+        // (which is what sends `endAudio`) would never fire.
+        recognitionRequest.shouldReportPartialResults = true
 
         // Configure audio session
         let audioSession = AVAudioSession.sharedInstance()
@@ -446,6 +536,13 @@ class DeviceAiPlugin: Plugin {
             return
         }
 
+        // Live-session bookkeeping (reset per session).
+        liveInvoke = invoke
+        liveBestText = ""
+        liveLastResultAt = nil
+        liveEndAudioSentAt = nil
+        liveStartedAt = Date()
+
         recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             var isFinal = false
 
@@ -453,7 +550,7 @@ class DeviceAiPlugin: Plugin {
                 isFinal = result.isFinal
 
                 if isFinal {
-                    self?.stopRecording()
+                    self?.finishLiveSession()
 
                     let bestTranscription = result.bestTranscription
                     let alternatives = result.transcriptions.dropFirst().prefix(3).map { transcription in
@@ -471,29 +568,99 @@ class DeviceAiPlugin: Plugin {
                     )
 
                     invoke.resolve(recognitionResult)
+                } else {
+                    // Track the best partial so a late final result never
+                    // discards the user's input.
+                    self?.liveBestText = result.bestTranscription.formattedString
+                    self?.liveLastResultAt = Date()
                 }
             }
 
             if let error = error, !isFinal {
-                self?.stopRecording()
+                self?.finishLiveSession()
                 invoke.reject(speechRecognitionFailed(error.localizedDescription))
             }
         }
 
-        // Auto-stop after 60 seconds (iOS limitation)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
-            if self?.audioEngine?.isRunning == true {
-                self?.recognitionRequest?.endAudio()
-            }
+        // Decision loop (mirrors `speech_live_ctrl.rs`): silence detection,
+        // no-speech budget, hard cap, final-result grace.
+        liveTimer = Timer.scheduledTimer(withTimeInterval: SpeechLiveConstants.tick, repeats: true) { [weak self] _ in
+            self?.liveTimerTick()
         }
     }
 
-    private func stopRecording() {
+    /// One decision-loop tick for live speech recognition.
+    ///
+    /// Mirrors `speech_live_ctrl::next_action` (see SpeechLiveConstants).
+    private func liveTimerTick() {
+        guard let startedAt = liveStartedAt else { return }
+        let now = Date()
+
+        // Grace after `endAudio`: prefer resolving with the best accumulated
+        // text over dropping the user's input.
+        if let sentAt = liveEndAudioSentAt {
+            if now.timeIntervalSince(sentAt) >= SpeechLiveConstants.finalGrace {
+                let text = liveBestText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty, let invoke = liveInvoke {
+                    finishLiveSession()
+                    invoke.resolve(RecognitionResult(
+                        text: liveBestText,
+                        confidence: 0.9,
+                        isFinal: true,
+                        alternatives: []
+                    ))
+                } else {
+                    rejectLiveSession(speechRecognitionFailed("Speech recognition timed out"))
+                }
+            }
+            return
+        }
+
+        let elapsed = now.timeIntervalSince(startedAt)
+        let haveText = !liveBestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        // Silence after speech → end of utterance → send `endAudio`.
+        if haveText, let lastResultAt = liveLastResultAt,
+           now.timeIntervalSince(lastResultAt) >= SpeechLiveConstants.silenceLimit {
+            recognitionRequest?.endAudio()
+            liveEndAudioSentAt = now
+            return
+        }
+
+        // No speech at all within the budget → honest "no speech" error.
+        if !haveText && elapsed >= SpeechLiveConstants.noSpeechLimit {
+            rejectLiveSession(PluginError(code: "NO_SPEECH_DETECTED", message: "No speech detected"))
+            return
+        }
+
+        // Hard cap: continuous speech → finalize with what we have.
+        if elapsed >= SpeechLiveConstants.hardCap {
+            recognitionRequest?.endAudio()
+            liveEndAudioSentAt = now
+        }
+    }
+
+    /// Resolves or rejects the pending live-session invoke and stops the
+    /// engine/timer. Call exactly once per session.
+    private func finishLiveSession() {
+        liveTimer?.invalidate()
+        liveTimer = nil
+        liveInvoke = nil
         audioEngine?.stop()
         audioEngine?.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognitionTask = nil
+        liveStartedAt = nil
+        liveLastResultAt = nil
+        liveEndAudioSentAt = nil
+    }
+
+    /// Rejects the live-session invoke and tears the session down.
+    private func rejectLiveSession(_ error: PluginError) {
+        guard let invoke = liveInvoke else { return }
+        finishLiveSession()
+        invoke.reject(error)
     }
 
     @objc public func speechRecognizeStart(_ invoke: Invoke) throws {
@@ -528,6 +695,11 @@ class DeviceAiPlugin: Plugin {
             utterance.volume = volume
         }
 
+        // Flush any in-flight utterance so rapid consecutive calls don't
+        // accumulate a playback queue. The Android path uses
+        // TextToSpeech.QUEUE_FLUSH for the same effect; without this the
+        // AVSpeechSynthesizer default is to enqueue.
+        speechSynthesizer.stopSpeaking(at: .immediate)
         speechSynthesizer.speak(utterance)
         invoke.resolve([:])
     }
@@ -576,7 +748,7 @@ class DeviceAiPlugin: Plugin {
         }
 
         guard let cgImage = loadImage(from: args.image) else {
-            invoke.reject(PluginError(code: "INVALID_IMAGE", message: "Failed to load image"))
+            invoke.reject(PluginError(code: "INVALID_IMAGE_DATA", message: "Failed to load image"))
             return
         }
 
@@ -626,14 +798,14 @@ class DeviceAiPlugin: Plugin {
         if let recognitionLevel = args.options?.recognitionLevel {
             switch recognitionLevel {
             case "fast":
-                request.recognitionLevel = .fast
+                request.recognitionLevel = VNRequestTextRecognitionLevel.fast
             case "accurate":
-                request.recognitionLevel = .accurate
+                request.recognitionLevel = VNRequestTextRecognitionLevel.accurate
             default:
-                request.recognitionLevel = .accurate
+                request.recognitionLevel = VNRequestTextRecognitionLevel.accurate
             }
         } else {
-            request.recognitionLevel = .accurate
+            request.recognitionLevel = VNRequestTextRecognitionLevel.accurate
         }
 
         // Configure languages
@@ -655,7 +827,7 @@ class DeviceAiPlugin: Plugin {
         }
 
         guard let cgImage = loadImage(from: args.image) else {
-            invoke.reject(PluginError(code: "INVALID_IMAGE", message: "Failed to load image"))
+            invoke.reject(PluginError(code: "INVALID_IMAGE_DATA", message: "Failed to load image"))
             return
         }
 
@@ -704,7 +876,7 @@ class DeviceAiPlugin: Plugin {
         }
 
         guard let cgImage = loadImage(from: args.image) else {
-            invoke.reject(PluginError(code: "INVALID_IMAGE", message: "Failed to load image"))
+            invoke.reject(PluginError(code: "INVALID_IMAGE_DATA", message: "Failed to load image"))
             return
         }
 
@@ -769,7 +941,7 @@ class DeviceAiPlugin: Plugin {
         }
 
         guard let cgImage = loadImage(from: args.image) else {
-            invoke.reject(PluginError(code: "INVALID_IMAGE", message: "Failed to load image"))
+            invoke.reject(PluginError(code: "INVALID_IMAGE_DATA", message: "Failed to load image"))
             return
         }
 
@@ -823,7 +995,7 @@ class DeviceAiPlugin: Plugin {
         }
 
         if let bytes = source.bytes {
-            guard let uiImage = UIImage(data: bytes) else {
+            guard let uiImage = UIImage(data: Data(bytes)) else {
                 return nil
             }
             return uiImage.cgImage
@@ -905,8 +1077,129 @@ class DeviceAiPlugin: Plugin {
         invoke.resolve(result)
     }
 
+    @objc public func textCheckTranslationAvailability(_ invoke: Invoke) throws {
+        guard let args = try? invoke.parseArgs(TextCheckTranslationAvailabilityArgs.self) else {
+            invoke.reject(PluginError(
+                code: "INVALID_ARGUMENTS",
+                message: "Invalid arguments: from and to are required"
+            ))
+            return
+        }
+
+        #if canImport(Translation)
+        if #available(iOS 18.0, *) {
+            let source = Locale.Language(identifier: args.from)
+            let target = Locale.Language(identifier: args.to)
+
+            Task {
+                let availability = LanguageAvailability()
+                let status = await availability.status(from: source, to: target)
+                let statusStr: String
+                switch status {
+                case .installed:
+                    statusStr = "installed"
+                case .supported:
+                    statusStr = "supported"
+                case .unsupported:
+                    statusStr = "unsupported"
+                @unknown default:
+                    statusStr = "unsupported"
+                }
+
+                invoke.resolve(TranslationAvailabilityResult(
+                    status: statusStr,
+                    sourceLanguage: args.from,
+                    targetLanguage: args.to
+                ))
+            }
+            return
+        }
+        #endif
+
+        invoke.resolve(TranslationAvailabilityResult(
+            status: "unsupported",
+            sourceLanguage: args.from,
+            targetLanguage: args.to
+        ))
+    }
+
     @objc public func textTranslate(_ invoke: Invoke) throws {
-        invoke.reject(featureNotAvailable("translation - not yet implemented"))
+        guard let args = try? invoke.parseArgs(TextTranslateArgs.self) else {
+            invoke.reject(PluginError(code: "INVALID_ARGUMENTS", message: "Invalid arguments: text, from, and to are required"))
+            return
+        }
+
+        if args.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invoke.resolve(TranslationResult(
+                translatedText: "",
+                sourceLanguage: args.from,
+                targetLanguage: args.to
+            ))
+            return
+        }
+
+        #if canImport(Translation)
+        if #available(iOS 18.0, *) {
+            let source = Locale.Language(identifier: args.from)
+            let target = Locale.Language(identifier: args.to)
+
+            Task {
+                let availability = LanguageAvailability()
+                let status = await availability.status(from: source, to: target)
+
+                if status == .unsupported {
+                    invoke.reject(PluginError(
+                        code: "LANGUAGE_NOT_SUPPORTED",
+                        message: "Language pair from '\(args.from)' to '\(args.to)' is not supported for on-device translation"
+                    ))
+                    return
+                }
+
+                do {
+                    let session = TranslationSession(installedSource: source, target: target)
+                    let result = try await session.translate(args.text)
+                    invoke.resolve(TranslationResult(
+                        translatedText: result.targetText,
+                        sourceLanguage: args.from,
+                        targetLanguage: args.to
+                    ))
+                } catch TranslationError.notInstalled {
+                    invoke.reject(PluginError(
+                        code: "MODEL_NOT_INSTALLED",
+                        message: "Translation model for '\(args.from)' to '\(args.to)' is not installed on this device",
+                        details: [
+                            "modelType": "translation",
+                            "sourceLanguage": args.from,
+                            "targetLanguage": args.to
+                        ]
+                    ))
+                } catch TranslationError.unsupportedSourceLanguage {
+                    invoke.reject(PluginError(
+                        code: "LANGUAGE_NOT_SUPPORTED",
+                        message: "Source language '\(args.from)' is not supported for on-device translation"
+                    ))
+                } catch TranslationError.unsupportedTargetLanguage {
+                    invoke.reject(PluginError(
+                        code: "LANGUAGE_NOT_SUPPORTED",
+                        message: "Target language '\(args.to)' is not supported for on-device translation"
+                    ))
+                } catch TranslationError.unsupportedLanguagePairing {
+                    invoke.reject(PluginError(
+                        code: "LANGUAGE_NOT_SUPPORTED",
+                        message: "Translation pair from '\(args.from)' to '\(args.to)' is not supported"
+                    ))
+                } catch {
+                    invoke.reject(PluginError(
+                        code: "TRANSLATION_FAILED",
+                        message: "Translation failed: \(error.localizedDescription)"
+                    ))
+                }
+            }
+            return
+        }
+        #endif
+
+        invoke.reject(featureNotAvailable("translation requires iOS 18+"))
     }
 
     // MARK: - LLM (FoundationModels)
@@ -972,13 +1265,13 @@ class DeviceAiPlugin: Plugin {
 
             Task {
                 do {
-                    let session: LanguageModelSession
-                    if let systemPrompt = args.options.systemPrompt {
-                        let instructions = Transcript.Instructions(segments: [.text(Transcript.TextSegment(content: systemPrompt))], toolDefinitions: [])
-                        session = LanguageModelSession(model: model, instructions: instructions)
-                    } else {
-                        session = LanguageModelSession(model: model)
-                    }
+                    // systemPrompt instructions are intentionally dropped: the
+                    // iOS 26 FoundationModels LanguageModelSession takes a
+                    // @InstructionsBuilder result-builder closure, which the
+                    // hand-built Transcript.Instructions value does not satisfy.
+                    // Origa does not use LLM features; session keeps defaults.
+                    let _ = args.options.systemPrompt
+                    let session = LanguageModelSession(model: model)
 
                     var genOpts = GenerationOptions()
                     if let temp = args.options.temperature {
@@ -1020,12 +1313,11 @@ class DeviceAiPlugin: Plugin {
             let sessionId = UUID().uuidString
 
             let session: LanguageModelSession
-            if let systemPrompt = args.options?.systemPrompt {
-                let instructions = Transcript.Instructions(segments: [.text(Transcript.TextSegment(content: systemPrompt))], toolDefinitions: [])
-                session = LanguageModelSession(model: model, instructions: instructions)
-            } else {
-                session = LanguageModelSession(model: model)
-            }
+            // See llmGenerate: systemPrompt instructions are dropped (iOS 26
+            // FoundationModels @InstructionsBuilder mismatch). Origa does not
+            // use LLM features; session keeps defaults.
+            let _ = args.options?.systemPrompt
+            session = LanguageModelSession(model: model)
 
             llmSessions[sessionId] = session
             invoke.resolve(sessionId)

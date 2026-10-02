@@ -2,7 +2,7 @@
 
 use tauri::{command, AppHandle, Runtime};
 
-use crate::models::{LanguageIdentification, Translation};
+use crate::models::{LanguageIdentification, Translation, TranslationAvailability};
 use crate::{DeviceAiApisExt, Result};
 
 /// Identify the language of text.
@@ -12,6 +12,17 @@ pub async fn text_identify_language<R: Runtime>(
     text: String,
 ) -> Result<LanguageIdentification> {
     app.device_ai_apis().text_identify_language(&text)
+}
+
+/// Check on-device translation availability between two languages.
+#[command]
+pub async fn text_check_translation_availability<R: Runtime>(
+    app: AppHandle<R>,
+    from: String,
+    to: String,
+) -> Result<TranslationAvailability> {
+    app.device_ai_apis()
+        .text_check_translation_availability(&from, &to)
 }
 
 /// Translate text between languages.

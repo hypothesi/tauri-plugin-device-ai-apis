@@ -26,8 +26,8 @@ pub fn get_platform_capabilities() -> Capabilities {
         image_classification: FeatureStatus::available_on_device(false),
         // NLLanguageRecognizer is fully implemented
         language_identification: FeatureStatus::available_on_device(false),
-        // Translation requires special entitlements
-        translation: FeatureStatus::unavailable(),
+        // Translation is supported via Apple Translation framework
+        translation: FeatureStatus::available_on_device(false),
         // FoundationModels requires macOS 26+ (detected at runtime)
         language_model: FeatureStatus::unavailable(),
     }

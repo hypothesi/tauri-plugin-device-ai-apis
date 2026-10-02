@@ -19,27 +19,20 @@ use windows::{
     Storage::Streams::{DataWriter, InMemoryRandomAccessStream},
 };
 
-/// Block on a Windows async operation
+/// Block on a Windows async operation.
 fn block_on<T: windows::core::RuntimeType>(op: IAsyncOperation<T>) -> windows::core::Result<T> {
-    // Windows async operations can be awaited synchronously in this context
-    // by using the get() method which blocks until completion
     loop {
-        match op.Status() {
-            Ok(status) => match status {
-                windows::Foundation::AsyncStatus::Completed => return op.GetResults(),
-                windows::Foundation::AsyncStatus::Error => {
-                    return Err(op
-                        .ErrorCode()
-                        .unwrap_or(windows::core::Error::from(windows::core::HRESULT(-1))))
-                }
-                windows::Foundation::AsyncStatus::Canceled => {
-                    return Err(windows::core::Error::from(windows::core::HRESULT(-1)))
-                }
-                _ => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-            },
-            Err(e) => return Err(e),
+        match op.Status()? {
+            windows::Foundation::AsyncStatus::Completed => return op.GetResults(),
+            windows::Foundation::AsyncStatus::Error => {
+                return Err(op.ErrorCode().unwrap_or(windows::core::HRESULT(-1)).into());
+            }
+            windows::Foundation::AsyncStatus::Canceled => {
+                return Err(windows::core::HRESULT(-1).into());
+            }
+            _ => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
     }
 }
@@ -56,7 +49,7 @@ pub fn speech_recognize(options: RecognitionOptions) -> crate::Result<Recognitio
                 message: format!("Failed to create language: {}", e),
             }
         })?;
-        SpeechRecognizer::CreateWithLanguage(&language)
+        SpeechRecognizer::Create(&language)
     } else {
         SpeechRecognizer::new()
     }
@@ -150,7 +143,7 @@ pub fn speech_synthesize(text: &str, options: SynthesisOptions) -> crate::Result
             for i in 0..all_voices.Size().unwrap_or(0) {
                 if let Ok(voice) = all_voices.GetAt(i) {
                     if let Ok(id) = voice.Id() {
-                        if id.to_string() == *voice_id {
+                        if id == voice_id {
                             let _ = synthesizer.SetVoice(&voice);
                             break;
                         }
@@ -307,10 +300,10 @@ pub fn vision_recognize_text(
                                 words_in_line.push(TextLine {
                                     text: word_text,
                                     bounding_box: BoundingBox {
-                                        x: rect.X as f32 / image_width,
-                                        y: rect.Y as f32 / image_height,
-                                        width: rect.Width as f32 / image_width,
-                                        height: rect.Height as f32 / image_height,
+                                        x: rect.X / image_width,
+                                        y: rect.Y / image_height,
+                                        width: rect.Width / image_width,
+                                        height: rect.Height / image_height,
                                     },
                                 });
                             }
@@ -393,9 +386,30 @@ fn load_software_bitmap(image: ImageSource) -> crate::Result<SoftwareBitmap> {
             message: format!("Failed to store: {}", e),
         })?;
 
-    block_on(store_op).map_err(|e| Error::ImageProcessingFailed {
-        message: format!("Failed to store: {}", e),
-    })?;
+    // DataWriterStoreOperation is not IAsyncOperation — poll it directly.
+    loop {
+        let status = store_op
+            .Status()
+            .map_err(|e| Error::ImageProcessingFailed {
+                message: format!("Failed to get store status: {}", e),
+            })?;
+        match status {
+            windows::Foundation::AsyncStatus::Completed => break,
+            windows::Foundation::AsyncStatus::Error => {
+                return Err(Error::ImageProcessingFailed {
+                    message: "Failed to store data".to_string(),
+                })
+            }
+            windows::Foundation::AsyncStatus::Canceled => {
+                return Err(Error::ImageProcessingFailed {
+                    message: "Store operation cancelled".to_string(),
+                })
+            }
+            _ => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+    }
 
     // Seek to beginning
     stream.Seek(0).map_err(|e| Error::ImageProcessingFailed {

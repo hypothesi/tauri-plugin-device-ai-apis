@@ -67,6 +67,8 @@ export type {
   LanguageIdentification,
   LanguageAlternative,
   Translation,
+  TranslationStatus,
+  TranslationAvailability,
   // LLM
   LlmAvailability,
   LlmModelCapabilities,
@@ -85,5 +87,13 @@ export type {
 } from "./types";
 
 // Errors
-export { isDeviceAiError, isFeatureNotAvailable, isPermissionError } from "./errors";
-export type { DeviceAiError, DeviceAiErrorCode } from "./errors";
+export {
+  isDeviceAiError,
+  isFeatureNotAvailable,
+  isPermissionError,
+  isModelNotInstalled,
+  isLanguageNotSupported,
+  isNoSpeechDetected,
+  normalizeDeviceAiError,
+} from "./errors";
+export type { DeviceAiError, DeviceAiErrorCode, DeviceAiErrorDetails } from "./errors";

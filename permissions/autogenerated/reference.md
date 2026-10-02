@@ -891,6 +891,19 @@ Enables language identification of text
 <tr>
 <td>
 
+`device-ai-apis:allow-text-check-translation-availability`
+
+</td>
+<td>
+
+Enables checking on-device translation availability between languages
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `device-ai-apis:allow-text-translate`
 
 </td>

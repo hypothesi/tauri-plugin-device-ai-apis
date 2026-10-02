@@ -17,9 +17,10 @@ mod macos {
     use std::process::Command;
 
     pub fn init() {
-        // 1. Explicitly link the Swift Concurrency library
+        // 1. Explicitly link frameworks and Swift Concurrency library
         // This ensures the linker knows it's a dependency.
         println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=Translation");
         println!("cargo:rustc-link-lib=swift_Concurrency");
 
         // 2. Add the Swift runtime to the RPATH
@@ -34,20 +35,21 @@ mod macos {
             println!("cargo:rustc-link-search=native={}/usr/lib/swift", sdk_path);
         }
 
-        compile_swift_llm_bridge();
+        compile_swift_bridges();
     }
 
-    /// Compile the Swift LLM bridge on macOS if the FoundationModels SDK is available.
+    /// Compile the Swift bridges on macOS (FoundationModels LLM and Translation frameworks).
     ///
-    /// This detects the macOS 26 SDK, compiles `src/swift/llm_bridge.swift` into an object
-    /// file, and links it. If the SDK or source file is missing, LLM features are gracefully
-    /// stubbed via the absence of `cfg(has_foundation_models)`.
-    fn compile_swift_llm_bridge() {
-        let swift_src = concat!(env!("CARGO_MANIFEST_DIR"), "/src/swift/llm_bridge.swift");
+    /// This compiles Swift sources into an object file and links them into a static archive.
+    fn compile_swift_bridges() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let llm_src = format!("{manifest_dir}/src/swift/llm_bridge.swift");
+        let translation_src = format!("{manifest_dir}/src/swift/translation_bridge.swift");
 
         println!("cargo:rerun-if-changed=src/swift/llm_bridge.swift");
+        println!("cargo:rerun-if-changed=src/swift/translation_bridge.swift");
 
-        if !Path::new(swift_src).exists() {
+        if !Path::new(&llm_src).exists() {
             println!(
                 "cargo:warning=src/swift/llm_bridge.swift not found, skipping Swift bridge compilation"
             );
@@ -65,19 +67,27 @@ mod macos {
         };
         let target_triple = format!("{arch}-apple-macos26.0");
 
-        let result = Command::new("swiftc")
-            .args([
-                "-c",
-                swift_src,
-                "-o",
-                &obj_path,
-                "-target",
-                &target_triple,
-                "-O",
-                "-whole-module-optimization",
-                "-parse-as-library",
-            ])
-            .output();
+        let mut swift_sources = vec![llm_src];
+        if Path::new(&translation_src).exists() {
+            swift_sources.push(translation_src);
+        }
+
+        let mut cmd = Command::new("swiftc");
+        cmd.arg("-c");
+        for src in &swift_sources {
+            cmd.arg(src);
+        }
+        cmd.args([
+            "-o",
+            &obj_path,
+            "-target",
+            &target_triple,
+            "-O",
+            "-whole-module-optimization",
+            "-parse-as-library",
+        ]);
+
+        let result = cmd.output();
 
         match result {
             Ok(output) if output.status.success() => {

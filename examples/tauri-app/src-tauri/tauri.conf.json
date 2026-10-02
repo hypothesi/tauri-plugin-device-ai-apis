@@ -6,22 +6,20 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../dist"
+    "frontendDist": "../build"
   },
   "app": {
-    "withGlobalTauri": true,
-    "security": {
-      "csp": null
-    },
     "windows": [
       {
-        "fullscreen": false,
-        "height": 600,
-        "resizable": true,
-        "title": "tauri-app",
-        "width": 800
+        "title": "Device AI APIs Demo",
+        "width": 1000,
+        "height": 700,
+        "resizable": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
@@ -32,6 +30,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "iOS": {
+      "minimumSystemVersion": "15.0"
+    }
   }
 }

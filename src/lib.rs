@@ -80,6 +80,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::vision_classify_image,
             // Text
             commands::text_identify_language,
+            commands::text_check_translation_availability,
             commands::text_translate,
             // LLM
             commands::llm_check_availability,

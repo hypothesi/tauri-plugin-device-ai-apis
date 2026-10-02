@@ -7,8 +7,9 @@ use crate::models::{
     Barcode, BarcodeFormat, BarcodeOptions, BoundingBox, Classification, ClassificationOptions,
     Face, FaceLandmarks, FaceOptions, ImageSource, LanguageAlternative, LanguageIdentification,
     OcrOptions, Point, RecognitionLevel, SynthesisOptions, TextBlock, TextLine,
-    TextRecognitionResult, Voice, VoiceGender, VoiceQuality,
+    TextRecognitionResult, Translation, Voice, VoiceGender, VoiceQuality,
 };
+use crate::speech_live_ctrl::{self, LiveAction};
 use crate::{Error, Result};
 
 use objc2::rc::Retained;
@@ -35,13 +36,13 @@ fn decode_image_source(image: &ImageSource) -> Result<Vec<u8>> {
             base64::engine::general_purpose::STANDARD
                 .decode(base64_data)
                 .map_err(|e| Error::ImageProcessingFailed {
-                    message: format!("Failed to decode base64 image: {}", e),
+                    message: format!("Failed to decode base64 image: {e}"),
                 })
         }
         ImageSource::Bytes(bytes) => Ok(bytes.clone()),
         ImageSource::FilePath(path) => {
             std::fs::read(path).map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Failed to read image file: {}", e),
+                message: format!("Failed to read image file: {e}"),
             })
         }
     }
@@ -152,6 +153,126 @@ pub fn text_identify_language(text: &str) -> Result<LanguageIdentification> {
         alternatives,
     })
 }
+
+// =============================================================================
+// Translation
+// =============================================================================
+
+/// Translate text from one language to another using Apple's Translation framework.
+pub fn text_translate(text: &str, from: &str, to: &str) -> Result<Translation> {
+    translation_ffi::translate(text, from, to)
+}
+
+/// Check translation availability between two languages.
+pub fn text_check_translation_availability(
+    from: &str,
+    to: &str,
+) -> Result<crate::models::TranslationAvailability> {
+    translation_ffi::check_availability(from, to)
+}
+
+mod translation_ffi {
+    use super::*;
+    use crate::models::{TranslationAvailability, TranslationStatus};
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    extern "C" {
+        fn swift_translation_check_availability(
+            source_lang: *const c_char,
+            target_lang: *const c_char,
+        ) -> i32;
+        fn swift_translation_translate(
+            text: *const c_char,
+            from: *const c_char,
+            to: *const c_char,
+        ) -> *mut c_char;
+        fn swift_translation_free_string(ptr: *mut c_char);
+    }
+
+    pub fn check_availability(from: &str, to: &str) -> Result<TranslationAvailability> {
+        let c_from = CString::new(from).map_err(|e| Error::TranslationFailed {
+            message: format!("Invalid source language: {e}"),
+        })?;
+        let c_to = CString::new(to).map_err(|e| Error::TranslationFailed {
+            message: format!("Invalid target language: {e}"),
+        })?;
+
+        let status_code =
+            unsafe { swift_translation_check_availability(c_from.as_ptr(), c_to.as_ptr()) };
+
+        let status = match status_code {
+            0 => TranslationStatus::Installed,
+            1 => TranslationStatus::Supported,
+            _ => TranslationStatus::Unsupported,
+        };
+
+        Ok(TranslationAvailability {
+            status,
+            source_language: from.to_string(),
+            target_language: to.to_string(),
+        })
+    }
+
+    pub fn translate(text: &str, from: &str, to: &str) -> Result<Translation> {
+        let c_text = CString::new(text).map_err(|e| Error::TranslationFailed {
+            message: format!("Invalid text: {e}"),
+        })?;
+        let c_from = CString::new(from).map_err(|e| Error::TranslationFailed {
+            message: format!("Invalid source language: {e}"),
+        })?;
+        let c_to = CString::new(to).map_err(|e| Error::TranslationFailed {
+            message: format!("Invalid target language: {e}"),
+        })?;
+
+        let res_ptr =
+            unsafe { swift_translation_translate(c_text.as_ptr(), c_from.as_ptr(), c_to.as_ptr()) };
+
+        if res_ptr.is_null() {
+            return Err(Error::TranslationFailed {
+                message: "Translation bridge returned null pointer".to_string(),
+            });
+        }
+
+        let json_str = unsafe {
+            let s = CStr::from_ptr(res_ptr).to_string_lossy().into_owned();
+            swift_translation_free_string(res_ptr);
+            s
+        };
+
+        if let Ok(err_obj) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            if let Some(err_code) = err_obj.get("code").and_then(|v| v.as_str()) {
+                if err_code == "MODEL_NOT_INSTALLED" {
+                    return Err(Error::ModelNotInstalled {
+                        model_type: "translation".to_string(),
+                        details: None,
+                        source_language: Some(from.to_string()),
+                        target_language: Some(to.to_string()),
+                    });
+                }
+                if err_code == "LANGUAGE_NOT_SUPPORTED" {
+                    return Err(Error::LanguageNotSupported {
+                        language: format!("{from} -> {to}"),
+                    });
+                }
+            }
+            if let Some(err_msg) = err_obj.get("error").and_then(|v| v.as_str()) {
+                if err_msg.contains("not supported") {
+                    return Err(Error::LanguageNotSupported {
+                        language: format!("{from} -> {to}"),
+                    });
+                }
+                return Err(Error::TranslationFailed {
+                    message: err_msg.to_string(),
+                });
+            }
+        }
+
+        serde_json::from_str::<Translation>(&json_str).map_err(|e| Error::TranslationFailed {
+            message: format!("Failed to parse translation result: {e}"),
+        })
+    }
+}
 // =============================================================================
 // Speech Recognition
 // =============================================================================
@@ -174,7 +295,7 @@ pub fn speech_recognize(
         }
         Some(crate::models::AudioSource::FilePath(path)) => {
             let data = std::fs::read(path).map_err(|e| Error::SpeechRecognitionFailed {
-                message: format!("Failed to read audio file: {}", e),
+                message: format!("Failed to read audio file: {e}"),
             })?;
             speech_recognize_from_file_data(data, &options)
         }
@@ -197,7 +318,7 @@ fn decode_audio_base64(data: &str) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(base64_data)
         .map_err(|e| Error::SpeechRecognitionFailed {
-            message: format!("Failed to decode base64 audio: {}", e),
+            message: format!("Failed to decode base64 audio: {e}"),
         })
 }
 
@@ -226,14 +347,65 @@ unsafe fn create_available_speech_recognizer(
         });
     }
 
+    // 0 = notDetermined, 1 = denied, 2 = restricted, 3 = authorized.
     let auth_status: isize = msg_send![class!(SFSpeechRecognizer), authorizationStatus];
     if auth_status == 1 || auth_status == 2 {
-        return Err(Error::SpeechRecognitionFailed {
-            message: "Speech recognition not authorized".to_string(),
+        return Err(Error::PermissionDenied {
+            permission: "speech_recognition".to_string(),
         });
+    }
+    if auth_status == 0 {
+        request_speech_authorization()?;
     }
 
     Ok(recognizer)
+}
+
+/// Prompts the user for speech-recognition permission when the status is
+/// `notDetermined` and waits (bounded) for the answer.
+///
+/// The authorization handler runs on an arbitrary queue; its result is
+/// relayed through a condvar. If the prompt never resolves (e.g. headless
+/// launch), the bounded wait turns into an honest permission error instead
+/// of a hang.
+unsafe fn request_speech_authorization() -> Result<()> {
+    const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+    let status_data = Arc::new((Mutex::new(None::<isize>), Condvar::new()));
+    let status_clone = status_data.clone();
+
+    let block = StackBlock::new(move |status: isize| {
+        let (lock, cvar) = &*status_clone;
+        let mut data = lock.lock().unwrap_or_else(|e| e.into_inner());
+        *data = Some(status);
+        cvar.notify_one();
+    });
+    let block = block.copy();
+
+    let _: () = msg_send![class!(SFSpeechRecognizer), requestAuthorization: &*block];
+
+    let (lock, cvar) = &*status_data;
+    let data = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let (data, timeout) = cvar
+        .wait_timeout(data, AUTH_TIMEOUT)
+        .unwrap_or_else(|e| e.into_inner());
+
+    if timeout.timed_out() {
+        return Err(Error::PermissionDenied {
+            permission: "speech_recognition (authorization prompt timed out)".to_string(),
+        });
+    }
+
+    // 3 = authorized; anything else after a prompt is a denial of some form.
+    // `data` derefs to `Option<isize>` (None = spurious wakeup before the
+    // handler ran — treat as denied).
+    if *data == Some(3) {
+        Ok(())
+    } else {
+        Err(Error::PermissionDenied {
+            permission: "speech_recognition".to_string(),
+        })
+    }
 }
 
 /// Recognize speech from an audio file
@@ -248,7 +420,7 @@ fn speech_recognize_from_file_data(
         let temp_dir = std::env::temp_dir();
         let temp_path = temp_dir.join(format!("speech_recognition_{}.wav", uuid::Uuid::new_v4()));
         std::fs::write(&temp_path, &audio_data).map_err(|e| Error::SpeechRecognitionFailed {
-            message: format!("Failed to write temp audio file: {}", e),
+            message: format!("Failed to write temp audio file: {e}"),
         })?;
 
         let path_str = temp_path
@@ -289,9 +461,9 @@ fn speech_recognize_from_file_data(
                 let ns_str: &NSString = &*(desc as *const NSString);
                 let error_msg = ns_str.to_string();
 
-                let mut data = lock.lock().unwrap();
+                let mut data = lock.lock().unwrap_or_else(|e| e.into_inner());
                 *data = Some(Err(crate::Error::SpeechRecognitionFailed {
-                    message: format!("Recognition error: {}", error_msg),
+                    message: format!("Recognition error: {error_msg}"),
                 }));
                 cvar.notify_one();
                 return;
@@ -311,7 +483,7 @@ fn speech_recognize_from_file_data(
                             let text = ns_str.to_string();
                             let confidence = extract_transcription_confidence(best_transcription);
 
-                            let mut data = lock.lock().unwrap();
+                            let mut data = lock.lock().unwrap_or_else(|e| e.into_inner());
                             *data = Some(Ok(crate::models::RecognitionResult {
                                 text,
                                 confidence,
@@ -340,8 +512,10 @@ fn speech_recognize_from_file_data(
         // Wait for result with timeout (30 seconds for file processing)
         let (lock, cvar) = &*result_data;
         let result = {
-            let data = lock.lock().unwrap();
-            let mut wait_result = cvar.wait_timeout(data, Duration::from_secs(30)).unwrap();
+            let data = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut wait_result = cvar
+                .wait_timeout(data, Duration::from_secs(30))
+                .unwrap_or_else(|e| e.into_inner());
 
             if wait_result.1.timed_out() {
                 let _ = std::fs::remove_file(&temp_path);
@@ -367,10 +541,54 @@ fn speech_recognize_from_file_data(
     }
 }
 
+/// Shared mutable state of a live recognition session.
+///
+/// The recognition handler (arbitrary queue) updates `best`/`final_result`
+/// and notifies; the session loop on the caller's thread reads snapshots
+/// and drives [`crate::speech_live_ctrl`] decisions.
+#[derive(Default)]
+struct LiveSession {
+    /// Best accumulated transcription so far (partial or final).
+    best: Option<crate::models::RecognitionResult>,
+    /// Final result delivered by the recognizer (isFinal = true).
+    final_result: Option<crate::models::RecognitionResult>,
+    /// Fatal recognizer error (handler delivers `error != nil`).
+    error: Option<crate::Error>,
+    /// Instant of the last recognition result (partial included).
+    last_change: Option<std::time::Instant>,
+}
+
+impl LiveSession {
+    /// Builds a state-machine snapshot. `last_change` is converted from a
+    /// wall-clock instant to "elapsed at arrival" (the machine's scale).
+    fn snapshot(
+        &self,
+        now: std::time::Instant,
+        started: std::time::Instant,
+    ) -> speech_live_ctrl::LiveState {
+        speech_live_ctrl::LiveState {
+            have_text: self
+                .best
+                .as_ref()
+                .is_some_and(|r| !r.text.trim().is_empty()),
+            last_change: self
+                .last_change
+                .map(|t| t.saturating_duration_since(started)),
+            // `elapsed` is time since session start.
+            elapsed: now.saturating_duration_since(started),
+            end_audio_sent: false,
+            end_audio_at: None,
+        }
+    }
+}
+
 /// Recognize speech from microphone (live input)
 fn speech_recognize_from_microphone(
     options: crate::models::RecognitionOptions,
 ) -> Result<crate::models::RecognitionResult> {
+    /// Tick of the session decision loop.
+    const TICK: Duration = Duration::from_millis(200);
+
     unsafe {
         let recognizer = create_available_speech_recognizer(&options)?;
 
@@ -379,34 +597,36 @@ fn speech_recognize_from_microphone(
         let input_node: *mut AnyObject = msg_send![audio_engine, inputNode];
 
         let request: *mut AnyObject = msg_send![class!(SFSpeechAudioBufferRecognitionRequest), new];
-        let _: () = msg_send![request, setShouldReportPartialResults: false];
+        // Partial results are required: with `false` the recognizer only
+        // reports a final result after `endAudio`, so silence detection
+        // (which is what sends `endAudio`) would never fire.
+        let _: () = msg_send![request, setShouldReportPartialResults: true];
 
         // Configure audio session
         let session: *mut AnyObject = msg_send![class!(AVAudioSession), sharedInstance];
         let category = NSString::from_str("AVAudioSessionCategoryRecord");
         let mode = NSString::from_str("AVAudioSessionModeMeasurement");
-        let mut error: *mut NSError = std::ptr::null_mut();
-        let _: bool = msg_send![session, setCategory: &*category, mode: &*mode, options: 0usize, error: &mut error];
-        let _: bool = msg_send![session, setActive: true, withOptions: 0usize, error: &mut error];
+        let mut session_error: *mut NSError = std::ptr::null_mut();
+        let _: bool = msg_send![session, setCategory: &*category, mode: &*mode, options: 0usize, error: &mut session_error];
+        let _: bool =
+            msg_send![session, setActive: true, withOptions: 0usize, error: &mut session_error];
 
         // Shared result storage
-        let result_data = Arc::new((
-            Mutex::new(None::<crate::models::RecognitionResult>),
-            Condvar::new(),
-        ));
-        let result_data_clone = result_data.clone();
+        let session_state = Arc::new((Mutex::new(LiveSession::default()), Condvar::new()));
+        let state_clone = session_state.clone();
 
         // Create completion block
         let block = StackBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
-            let (lock, cvar) = &*result_data_clone;
+            let (lock, cvar) = &*state_clone;
 
             if !error.is_null() {
-                let mut data = lock.lock().unwrap();
-                *data = Some(crate::models::RecognitionResult {
-                    text: String::new(),
-                    confidence: 0.0,
-                    is_final: true,
-                    alternatives: vec![],
+                let desc: *mut AnyObject = msg_send![error, localizedDescription];
+                let ns_str: &NSString = &*(desc as *const NSString);
+                let error_msg = ns_str.to_string();
+
+                let mut data = lock.lock().unwrap_or_else(|e| e.into_inner());
+                data.error = Some(crate::Error::SpeechRecognitionFailed {
+                    message: format!("Recognition error: {error_msg}"),
                 });
                 cvar.notify_one();
                 return;
@@ -414,21 +634,34 @@ fn speech_recognize_from_microphone(
 
             if !result.is_null() {
                 let best_transcription: *mut AnyObject = msg_send![result, bestTranscription];
+                if best_transcription.is_null() {
+                    return;
+                }
                 let formatted_string: *mut AnyObject =
                     msg_send![best_transcription, formattedString];
+                if formatted_string.is_null() {
+                    return;
+                }
                 let ns_str: &NSString = &*(formatted_string as *const NSString);
                 let text = ns_str.to_string();
 
                 let is_final: bool = msg_send![result, isFinal];
                 let confidence = extract_transcription_confidence(best_transcription);
+                let now = std::time::Instant::now();
 
-                let mut data = lock.lock().unwrap();
-                *data = Some(crate::models::RecognitionResult {
+                let mut data = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let recognized = crate::models::RecognitionResult {
                     text,
                     confidence,
                     is_final,
                     alternatives: vec![],
-                });
+                };
+                if is_final {
+                    data.final_result = Some(recognized);
+                } else {
+                    data.best = Some(recognized);
+                    data.last_change = Some(now);
+                }
                 cvar.notify_one();
             }
         });
@@ -463,30 +696,100 @@ fn speech_recognize_from_microphone(
             });
         }
 
-        // Wait for result with timeout (5 seconds)
-        let (lock, cvar) = &*result_data;
-        let result = {
-            let data = lock.lock().unwrap();
-            let mut wait_result = cvar.wait_timeout(data, Duration::from_secs(5)).unwrap();
+        let started_at = std::time::Instant::now();
+        let mut end_audio_sent = false;
+        let mut end_audio_at: Option<std::time::Instant> = None;
 
-            // Stop audio engine
-            let _: () = msg_send![audio_engine, stop];
-            let _: () = msg_send![input_node, removeTapOnBus: 0usize];
-            let _: () = msg_send![request, endAudio];
+        // Session decision loop: wake on every handler callback or TICK,
+        // evaluate the state machine, send `endAudio` on end-of-utterance,
+        // and finish as soon as a final result, an error, or a cancellation
+        // boundary is reached.
+        let outcome = 'session: loop {
+            let (lock, cvar) = &*session_state;
+            let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
-            if wait_result.1.timed_out() {
-                return Err(Error::SpeechRecognitionFailed {
-                    message: "Speech recognition timed out".to_string(),
-                });
+            loop {
+                let now = std::time::Instant::now();
+
+                // Fatal error from the handler → surface it as-is.
+                if let Some(err) = data_take_error(&mut guard) {
+                    break 'session Err(err);
+                }
+                // Final result delivered → done.
+                if let Some(final_result) = guard.final_result.clone() {
+                    break 'session Ok(final_result);
+                }
+
+                // Snapshot for the state machine. `last_change`/`end_audio_at`
+                // are converted to the machine's "elapsed" scale.
+                let mut snapshot = guard.snapshot(now, started_at);
+                snapshot.end_audio_sent = end_audio_sent;
+                snapshot.end_audio_at =
+                    end_audio_at.map(|t| t.saturating_duration_since(started_at));
+
+                match speech_live_ctrl::next_action(&snapshot) {
+                    LiveAction::Continue => {
+                        // The loop re-checks after each handler wakeup; fall
+                        // through to the timed wait below.
+                        break;
+                    }
+                    LiveAction::EndAudio => {
+                        drop(guard);
+                        let _: () = msg_send![request, endAudio];
+                        end_audio_sent = true;
+                        end_audio_at = Some(std::time::Instant::now());
+                        // Re-acquire and continue waiting for the final result.
+                        guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+                    }
+                    LiveAction::CancelNoSpeech => {
+                        break 'session Err(crate::Error::NoSpeechDetected);
+                    }
+                    LiveAction::CancelTimeout => {
+                        // Grace expired after endAudio: prefer the best
+                        // accumulated text over dropping the user's input.
+                        match guard.best.clone() {
+                            Some(best) if !best.text.trim().is_empty() => {
+                                break 'session Ok(best);
+                            }
+                            _ => {
+                                break 'session Err(Error::SpeechRecognitionFailed {
+                                    message: "Speech recognition timed out".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
             }
 
-            wait_result.0.take()
+            // Timed wait: returns early on every handler notification.
+            // The guard is dropped before the next outer iteration re-locks —
+            // the outer `lock.lock()` would otherwise deadlock against this
+            // still-held guard (std Mutex is not reentrant).
+            let (guard2, _timeout) = cvar
+                .wait_timeout(guard, TICK)
+                .unwrap_or_else(|e| e.into_inner());
+            drop(guard2);
         };
 
-        result.ok_or_else(|| Error::SpeechRecognitionFailed {
-            message: "No speech recognized".to_string(),
-        })
+        // Cleanup: stop the engine, remove the tap, ensure `endAudio` was
+        // delivered (harmless on early exits — the task is finishing anyway),
+        // and deactivate the audio session.
+        let _: () = msg_send![audio_engine, stop];
+        let _: () = msg_send![input_node, removeTapOnBus: 0usize];
+        if !end_audio_sent {
+            let _: () = msg_send![request, endAudio];
+        }
+        let mut deactivate_error: *mut NSError = std::ptr::null_mut();
+        let _: bool =
+            msg_send![session, setActive: false, withOptions: 0usize, error: &mut deactivate_error];
+
+        outcome
     }
+}
+
+/// Takes the session error if the handler delivered one.
+fn data_take_error(session: &mut LiveSession) -> Option<crate::Error> {
+    session.error.take()
 }
 
 // =============================================================================
@@ -697,7 +1000,7 @@ pub fn vision_recognize_text(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Text recognition failed: {}", e),
+                message: format!("Text recognition failed: {e}"),
             })?;
 
         // Get results
@@ -802,7 +1105,7 @@ pub fn vision_detect_barcodes(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Barcode detection failed: {}", e),
+                message: format!("Barcode detection failed: {e}"),
             })?;
 
         let results = request
@@ -1061,10 +1364,7 @@ fn detect_faces_ci(data: &[u8], options: FaceOptions) -> Result<Vec<Face>> {
         match result {
             Ok(res) => res,
             Err(exception) => Err(Error::ImageProcessingFailed {
-                message: format!(
-                    "Objective-C exception during face detection: {:?}",
-                    exception
-                ),
+                message: format!("Objective-C exception during face detection: {exception:?}"),
             }),
         }
     }
@@ -1121,7 +1421,7 @@ pub fn vision_detect_faces(image: ImageSource, options: FaceOptions) -> Result<V
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Face detection failed: {}", e),
+                message: format!("Face detection failed: {e}"),
             })?;
 
         // Retrieve results from the specific request objects we created
@@ -1318,7 +1618,7 @@ pub fn vision_classify_image(
         handler
             .performRequests_error(&requests)
             .map_err(|e| Error::ImageProcessingFailed {
-                message: format!("Image classification failed: {}", e),
+                message: format!("Image classification failed: {e}"),
             })?;
 
         let results = request

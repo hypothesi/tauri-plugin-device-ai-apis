@@ -46,6 +46,8 @@
 mod capabilities;
 mod error;
 mod models;
+#[cfg(any(target_os = "macos", test))]
+pub mod speech_live_ctrl;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -462,14 +464,45 @@ impl Text<'_> {
         }
     }
 
+    /// Check translation availability between two languages.
+    pub fn check_translation_availability(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> Result<TranslationAvailability> {
+        let _ = self.0;
+
+        #[cfg(target_os = "macos")]
+        {
+            macos::text_check_translation_availability(from, to)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (from, to);
+            Ok(TranslationAvailability {
+                status: TranslationStatus::Unsupported,
+                source_language: from.to_string(),
+                target_language: to.to_string(),
+            })
+        }
+    }
+
     /// Translate text between languages.
     ///
-    /// Translation is not yet implemented. Returns [`Error::FeatureNotAvailable`].
+    /// Uses on-device translation where available (macOS 15+ / iOS 18+).
     pub fn translate(&self, text: &str, from: &str, to: &str) -> Result<Translation> {
         let _ = self.0;
-        let _ = (text, from, to);
 
-        Err(feature_not_available("translation"))
+        #[cfg(target_os = "macos")]
+        {
+            macos::text_translate(text, from, to)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (text, from, to);
+
+            Err(feature_not_available("translation"))
+        }
     }
 }
 
@@ -768,6 +801,7 @@ impl Llm<'_> {
     }
 }
 
+#[allow(dead_code)]
 fn feature_not_available(feature: &str) -> Error {
     Error::FeatureNotAvailable {
         feature: feature.to_string(),
@@ -778,5 +812,59 @@ fn feature_not_available(feature: &str) -> Error {
 fn llm_not_available() -> Error {
     Error::LlmNotAvailable {
         reason: LANGUAGE_MODEL_UNAVAILABLE_REASON.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_translate_empty_text() {
+        let ai = DeviceAi::new();
+        let result = ai.text().translate("", "en", "es").unwrap();
+        assert_eq!(result.translated_text, "");
+        assert_eq!(result.source_language, "en");
+        assert_eq!(result.target_language, "es");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_check_translation_availability() {
+        let ai = DeviceAi::new();
+        let avail = ai
+            .text()
+            .check_translation_availability("en", "es")
+            .unwrap();
+        assert_eq!(avail.source_language, "en");
+        assert_eq!(avail.target_language, "es");
+        // Status should be either Installed or Supported on macOS 15+
+        assert!(matches!(
+            avail.status,
+            TranslationStatus::Installed | TranslationStatus::Supported
+        ));
+
+        let unsupp = ai
+            .text()
+            .check_translation_availability("xyz", "abc")
+            .unwrap();
+        assert_eq!(unsupp.status, TranslationStatus::Unsupported);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_translate_unsupported_language_pair() {
+        let ai = DeviceAi::new();
+        let err = ai.text().translate("Hello", "xyz", "abc").unwrap_err();
+        match err {
+            Error::LanguageNotSupported { language } => {
+                assert!(language.contains("xyz"));
+            }
+            Error::TranslationFailed { message } => {
+                assert!(message.contains("not supported") || message.contains("xyz"));
+            }
+            other => panic!("Unexpected error: {:?}", other),
+        }
     }
 }

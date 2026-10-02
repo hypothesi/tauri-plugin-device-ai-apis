@@ -48,6 +48,14 @@ pub enum Error {
     #[error("Translation failed: {message}")]
     TranslationFailed { message: String },
 
+    #[error("Model not installed: {model_type}")]
+    ModelNotInstalled {
+        model_type: String,
+        details: Option<String>,
+        source_language: Option<String>,
+        target_language: Option<String>,
+    },
+
     // Language model errors
     #[error("Language model not available: {reason}")]
     LlmNotAvailable { reason: String },
@@ -61,7 +69,10 @@ pub enum Error {
     #[error("Language model content filtered: {message}")]
     LlmContentFiltered { message: String },
 
-    // Platform errors
+    // General input / platform errors
+    #[error("Invalid argument: {message}")]
+    InvalidArgument { message: String },
+
     #[error("Platform error: {0}")]
     Platform(String),
 
@@ -86,21 +97,98 @@ impl Error {
             Error::InvalidImageData => "INVALID_IMAGE_DATA",
             Error::TextProcessingFailed { .. } => "TEXT_PROCESSING_FAILED",
             Error::TranslationFailed { .. } => "TRANSLATION_FAILED",
+            Error::ModelNotInstalled { .. } => "MODEL_NOT_INSTALLED",
             Error::LlmNotAvailable { .. } => "LLM_NOT_AVAILABLE",
             Error::LlmGenerationFailed { .. } => "LLM_GENERATION_FAILED",
             Error::LlmSessionNotFound { .. } => "LLM_SESSION_NOT_FOUND",
             Error::LlmContentFiltered { .. } => "LLM_CONTENT_FILTERED",
+            Error::InvalidArgument { .. } => "INVALID_ARGUMENTS",
             Error::Platform(_) => "PLATFORM_ERROR",
             Error::Io(_) => "IO_ERROR",
         }
     }
+
+    /// Get programmatic structured details for this error if available.
+    pub fn details(&self) -> Option<ErrorDetails> {
+        match self {
+            Error::FeatureNotAvailable { feature } => Some(ErrorDetails {
+                feature: Some(feature.clone()),
+                ..Default::default()
+            }),
+            Error::PermissionRequired { permission } | Error::PermissionDenied { permission } => {
+                Some(ErrorDetails {
+                    permission: Some(permission.clone()),
+                    ..Default::default()
+                })
+            }
+            Error::LanguageNotSupported { language } => Some(ErrorDetails {
+                language: Some(language.clone()),
+                ..Default::default()
+            }),
+            Error::ModelNotInstalled {
+                model_type,
+                source_language,
+                target_language,
+                ..
+            } => Some(ErrorDetails {
+                model_type: Some(model_type.clone()),
+                source_language: source_language.clone(),
+                target_language: target_language.clone(),
+                ..Default::default()
+            }),
+            Error::InvalidSessionId { session_id } | Error::LlmSessionNotFound { session_id } => {
+                Some(ErrorDetails {
+                    session_id: Some(session_id.clone()),
+                    ..Default::default()
+                })
+            }
+            Error::InvalidImageFormat { expected, actual } => Some(ErrorDetails {
+                expected: Some(expected.clone()),
+                actual: Some(actual.clone()),
+                ..Default::default()
+            }),
+            Error::LlmNotAvailable { reason } => Some(ErrorDetails {
+                reason: Some(reason.clone()),
+                ..Default::default()
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Structured metadata providing programmatic context for an error.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
 }
 
 /// Serializable error response sent to the frontend.
 #[derive(Serialize)]
-struct ErrorResponse {
-    code: &'static str,
-    message: String,
+pub struct ErrorResponse {
+    pub code: &'static str,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<ErrorDetails>,
 }
 
 impl Serialize for Error {
@@ -111,6 +199,7 @@ impl Serialize for Error {
         let response = ErrorResponse {
             code: self.code(),
             message: self.to_string(),
+            details: self.details(),
         };
         response.serialize(serializer)
     }
@@ -128,6 +217,22 @@ mod tests {
         let json = serde_json::to_string(&error).unwrap();
         assert!(json.contains("FEATURE_NOT_AVAILABLE"));
         assert!(json.contains("speechRecognition"));
+        assert!(json.contains("\"details\":{\"feature\":\"speechRecognition\"}"));
+    }
+
+    #[test]
+    fn test_model_not_installed_serialization() {
+        let error = Error::ModelNotInstalled {
+            model_type: "translation".to_string(),
+            details: None,
+            source_language: Some("en".to_string()),
+            target_language: Some("es".to_string()),
+        };
+        let json = serde_json::to_string(&error).unwrap();
+        assert!(json.contains("MODEL_NOT_INSTALLED"));
+        assert!(json.contains("modelType\":\"translation\""));
+        assert!(json.contains("sourceLanguage\":\"en\""));
+        assert!(json.contains("targetLanguage\":\"es\""));
     }
 
     #[test]
@@ -139,6 +244,16 @@ mod tests {
             }
             .code(),
             "PERMISSION_DENIED"
+        );
+        assert_eq!(
+            Error::ModelNotInstalled {
+                model_type: "translation".to_string(),
+                details: None,
+                source_language: None,
+                target_language: None,
+            }
+            .code(),
+            "MODEL_NOT_INSTALLED"
         );
     }
 
@@ -179,8 +294,8 @@ mod tests {
             }
             .code(),
             Error::InvalidImageFormat {
-                expected: "png".to_string(),
-                actual: "txt".to_string(),
+                expected: "test".to_string(),
+                actual: "test".to_string(),
             }
             .code(),
             Error::InvalidImageData.code(),
@@ -192,7 +307,13 @@ mod tests {
                 message: "test".to_string(),
             }
             .code(),
-            Error::Platform("test".to_string()).code(),
+            Error::ModelNotInstalled {
+                model_type: "test".to_string(),
+                details: None,
+                source_language: None,
+                target_language: None,
+            }
+            .code(),
             Error::LlmNotAvailable {
                 reason: "test".to_string(),
             }
@@ -209,188 +330,158 @@ mod tests {
                 message: "test".to_string(),
             }
             .code(),
+            Error::InvalidArgument {
+                message: "test".to_string(),
+            }
+            .code(),
+            Error::Platform("test".to_string()).code(),
+            Error::Io(std::io::Error::other("test")).code(),
         ];
 
-        // Check all codes are unique
         let mut unique_codes = codes.clone();
         unique_codes.sort();
         unique_codes.dedup();
-        assert_eq!(
-            codes.len(),
-            unique_codes.len(),
-            "Error codes should be unique"
-        );
+        assert_eq!(codes.len(), unique_codes.len());
     }
 
     #[test]
     fn test_error_display_messages() {
-        assert!(Error::NoSpeechDetected.to_string().contains("No speech"));
-        assert!(Error::InvalidImageData
-            .to_string()
-            .contains("Invalid image"));
-    }
-
-    #[test]
-    fn test_feature_not_available_error() {
-        let error = Error::FeatureNotAvailable {
-            feature: "speechRecognition".to_string(),
-        };
-        assert_eq!(error.code(), "FEATURE_NOT_AVAILABLE");
-        assert!(error.to_string().contains("speechRecognition"));
-    }
-
-    #[test]
-    fn test_permission_denied_error() {
-        let error = Error::PermissionDenied {
-            permission: "microphone".to_string(),
-        };
-        assert_eq!(error.code(), "PERMISSION_DENIED");
-        assert!(error.to_string().contains("microphone"));
-    }
-
-    #[test]
-    fn test_permission_required_error() {
-        let error = Error::PermissionRequired {
-            permission: "camera".to_string(),
-        };
-        assert_eq!(error.code(), "PERMISSION_REQUIRED");
-        assert!(error.to_string().contains("camera"));
-    }
-
-    #[test]
-    fn test_speech_recognition_failed_error() {
-        let error = Error::SpeechRecognitionFailed {
-            message: "Timeout".to_string(),
-        };
-        assert_eq!(error.code(), "SPEECH_RECOGNITION_FAILED");
-        assert!(error.to_string().contains("Timeout"));
-    }
-
-    #[test]
-    fn test_speech_synthesis_failed_error() {
-        let error = Error::SpeechSynthesisFailed {
-            message: "No audio device".to_string(),
-        };
-        assert_eq!(error.code(), "SPEECH_SYNTHESIS_FAILED");
-        assert!(error.to_string().contains("No audio device"));
-    }
-
-    #[test]
-    fn test_language_not_supported_error() {
-        let error = Error::LanguageNotSupported {
-            language: "xyz-ABC".to_string(),
-        };
-        assert_eq!(error.code(), "LANGUAGE_NOT_SUPPORTED");
-        assert!(error.to_string().contains("xyz-ABC"));
-    }
-
-    #[test]
-    fn test_invalid_session_id_error() {
-        let error = Error::InvalidSessionId {
-            session_id: "session-123".to_string(),
-        };
-        assert_eq!(error.code(), "INVALID_SESSION_ID");
-        assert!(error.to_string().contains("session-123"));
-    }
-
-    #[test]
-    fn test_image_processing_failed_error() {
-        let error = Error::ImageProcessingFailed {
-            message: "corrupt data".to_string(),
-        };
-        assert_eq!(error.code(), "IMAGE_PROCESSING_FAILED");
-        assert!(error.to_string().contains("corrupt data"));
-    }
-
-    #[test]
-    fn test_invalid_image_format_error() {
-        let error = Error::InvalidImageFormat {
-            expected: "JPEG".to_string(),
-            actual: "PDF".to_string(),
-        };
-        assert_eq!(error.code(), "INVALID_IMAGE_FORMAT");
-        assert!(error.to_string().contains("JPEG"));
-        assert!(error.to_string().contains("PDF"));
-    }
-
-    #[test]
-    fn test_text_processing_failed_error() {
-        let error = Error::TextProcessingFailed {
-            message: "Model not loaded".to_string(),
-        };
-        assert_eq!(error.code(), "TEXT_PROCESSING_FAILED");
-        assert!(error.to_string().contains("Model not loaded"));
-    }
-
-    #[test]
-    fn test_translation_failed_error() {
-        let error = Error::TranslationFailed {
-            message: "Network error".to_string(),
-        };
-        assert_eq!(error.code(), "TRANSLATION_FAILED");
-        assert!(error.to_string().contains("Network error"));
-    }
-
-    #[test]
-    fn test_platform_error() {
-        let error = Error::Platform("WinRT error 0x80004005".to_string());
-        assert_eq!(error.code(), "PLATFORM_ERROR");
-        assert!(error.to_string().contains("WinRT error"));
+        assert_eq!(
+            Error::FeatureNotAvailable {
+                feature: "speechRecognition".to_string()
+            }
+            .to_string(),
+            "Feature not available on this platform: speechRecognition"
+        );
+        assert_eq!(
+            Error::PermissionRequired {
+                permission: "microphone".to_string()
+            }
+            .to_string(),
+            "Feature requires permission: microphone"
+        );
+        assert_eq!(
+            Error::PermissionDenied {
+                permission: "microphone".to_string()
+            }
+            .to_string(),
+            "Permission denied: microphone"
+        );
+        assert_eq!(
+            Error::SpeechRecognitionFailed {
+                message: "timed out".to_string()
+            }
+            .to_string(),
+            "Speech recognition failed: timed out"
+        );
+        assert_eq!(
+            Error::SpeechSynthesisFailed {
+                message: "voice not found".to_string()
+            }
+            .to_string(),
+            "Speech synthesis failed: voice not found"
+        );
+        assert_eq!(
+            Error::LanguageNotSupported {
+                language: "xx-YY".to_string()
+            }
+            .to_string(),
+            "Language not supported: xx-YY"
+        );
+        assert_eq!(Error::NoSpeechDetected.to_string(), "No speech detected");
+        assert_eq!(
+            Error::InvalidSessionId {
+                session_id: "abc".to_string()
+            }
+            .to_string(),
+            "Invalid session ID: abc"
+        );
+        assert_eq!(
+            Error::ImageProcessingFailed {
+                message: "corrupt".to_string()
+            }
+            .to_string(),
+            "Image processing failed: corrupt"
+        );
+        assert_eq!(
+            Error::InvalidImageFormat {
+                expected: "RGBA".to_string(),
+                actual: "RGB".to_string()
+            }
+            .to_string(),
+            "Invalid image format: expected RGBA, got RGB"
+        );
+        assert_eq!(Error::InvalidImageData.to_string(), "Invalid image data");
+        assert_eq!(
+            Error::TextProcessingFailed {
+                message: "empty".to_string()
+            }
+            .to_string(),
+            "Text processing failed: empty"
+        );
+        assert_eq!(
+            Error::TranslationFailed {
+                message: "network".to_string()
+            }
+            .to_string(),
+            "Translation failed: network"
+        );
+        assert_eq!(
+            Error::ModelNotInstalled {
+                model_type: "translation".to_string(),
+                details: None,
+                source_language: None,
+                target_language: None,
+            }
+            .to_string(),
+            "Model not installed: translation"
+        );
+        assert_eq!(
+            Error::LlmNotAvailable {
+                reason: "device not supported".to_string()
+            }
+            .to_string(),
+            "Language model not available: device not supported"
+        );
+        assert_eq!(
+            Error::LlmGenerationFailed {
+                message: "timeout".to_string()
+            }
+            .to_string(),
+            "Language model generation failed: timeout"
+        );
+        assert_eq!(
+            Error::LlmSessionNotFound {
+                session_id: "s1".to_string()
+            }
+            .to_string(),
+            "Language model session not found: s1"
+        );
+        assert_eq!(
+            Error::LlmContentFiltered {
+                message: "safety policy".to_string()
+            }
+            .to_string(),
+            "Language model content filtered: safety policy"
+        );
+        assert_eq!(
+            Error::Platform("test".to_string()).to_string(),
+            "Platform error: test"
+        );
     }
 
     #[test]
     fn test_error_json_structure() {
-        let error = Error::FeatureNotAvailable {
-            feature: "textRecognition".to_string(),
+        let error = Error::SpeechRecognitionFailed {
+            message: "Recognition timed out".to_string(),
         };
-        let json = serde_json::to_string(&error).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&error).unwrap()).unwrap();
 
-        assert!(parsed.get("code").is_some());
-        assert!(parsed.get("message").is_some());
-        assert_eq!(parsed["code"].as_str().unwrap(), "FEATURE_NOT_AVAILABLE");
-    }
-
-    #[test]
-    fn test_io_error_conversion() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
-        let error: Error = io_error.into();
-        assert_eq!(error.code(), "IO_ERROR");
-    }
-
-    #[test]
-    fn test_llm_not_available_error() {
-        let error = Error::LlmNotAvailable {
-            reason: "macOS 26 required".to_string(),
-        };
-        assert_eq!(error.code(), "LLM_NOT_AVAILABLE");
-        assert!(error.to_string().contains("macOS 26 required"));
-    }
-
-    #[test]
-    fn test_llm_generation_failed_error() {
-        let error = Error::LlmGenerationFailed {
-            message: "context overflow".to_string(),
-        };
-        assert_eq!(error.code(), "LLM_GENERATION_FAILED");
-        assert!(error.to_string().contains("context overflow"));
-    }
-
-    #[test]
-    fn test_llm_session_not_found_error() {
-        let error = Error::LlmSessionNotFound {
-            session_id: "abc-123".to_string(),
-        };
-        assert_eq!(error.code(), "LLM_SESSION_NOT_FOUND");
-        assert!(error.to_string().contains("abc-123"));
-    }
-
-    #[test]
-    fn test_llm_content_filtered_error() {
-        let error = Error::LlmContentFiltered {
-            message: "harmful content".to_string(),
-        };
-        assert_eq!(error.code(), "LLM_CONTENT_FILTERED");
-        assert!(error.to_string().contains("harmful content"));
+        assert_eq!(value["code"], "SPEECH_RECOGNITION_FAILED");
+        assert_eq!(
+            value["message"],
+            "Speech recognition failed: Recognition timed out"
+        );
     }
 }

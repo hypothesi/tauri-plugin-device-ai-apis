@@ -103,6 +103,15 @@ impl<R: Runtime> DeviceAiApis<R> {
         self.inner.text().identify_language(text)
     }
 
+    /// Check on-device translation availability between two languages.
+    pub fn text_check_translation_availability(
+        &self,
+        from: &str,
+        to: &str,
+    ) -> crate::Result<TranslationAvailability> {
+        self.inner.text().check_translation_availability(from, to)
+    }
+
     /// Translate text between languages.
     pub fn text_translate(&self, text: &str, from: &str, to: &str) -> crate::Result<Translation> {
         self.inner.text().translate(text, from, to)
