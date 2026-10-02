@@ -56,4 +56,6 @@ export const llmCapabilityLabels = Object.freeze([
   { key: "topKSupport", label: "Top-k" },
   { key: "summarize", label: "Summarize" },
   { key: "rewrite", label: "Rewrite" },
+  { key: "multimodal", label: "Multimodal (vision)" },
+  { key: "structuredOutput", label: "Structured JSON" },
 ]);

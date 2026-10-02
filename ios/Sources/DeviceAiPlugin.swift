@@ -8,10 +8,69 @@ import WebKit
 import NaturalLanguage
 #if canImport(FoundationModels)
 import FoundationModels
+
+// MARK: - Multimodal Extension for FoundationModels
+
+extension Transcript {
+    public struct ImageSegment: Sendable {
+        public let data: Data
+        public let mimeType: String
+
+        public init(data: Data, mimeType: String = "image/jpeg") {
+            self.data = data
+            self.mimeType = mimeType
+        }
+    }
+}
 #endif
 #if canImport(Translation)
 import Translation
 #endif
+
+private struct DynamicCodingKeys: CodingKey {
+    var stringValue: String
+    init?(stringValue: String) { self.stringValue = stringValue }
+    var intValue: Int? { return nil }
+    init?(intValue: Int) { return nil }
+}
+
+private func decodeAnyValue(from container: KeyedDecodingContainer<DynamicCodingKeys>, key: DynamicCodingKeys) throws -> Any {
+    if let bool = try? container.decode(Bool.self, forKey: key) { return bool }
+    if let int = try? container.decode(Int.self, forKey: key) { return int }
+    if let double = try? container.decode(Double.self, forKey: key) { return double }
+    if let str = try? container.decode(String.self, forKey: key) { return str }
+    if let nested = try? container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: key) {
+        var result: [String: Any] = [:]
+        for nestedKey in nested.allKeys {
+            result[nestedKey.stringValue] = try decodeAnyValue(from: nested, key: nestedKey)
+        }
+        return result
+    }
+    return NSNull()
+}
+
+class AnyCodableDTO: Decodable {
+    let rawJSON: String
+
+    required init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+            rawJSON = str
+            return
+        }
+        if let dict = try? decoder.container(keyedBy: DynamicCodingKeys.self) {
+            var result: [String: Any] = [:]
+            for key in dict.allKeys {
+                result[key.stringValue] = try decodeAnyValue(from: dict, key: key)
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]),
+               let str = String(data: data, encoding: .utf8) {
+                rawJSON = str
+                return
+            }
+        }
+        rawJSON = "{}"
+    }
+}
 
 // MARK: - Argument Types
 
@@ -117,6 +176,8 @@ class TextTranslateArgs: Decodable {
 
 class LlmGenerateOptionsInner: Decodable {
     let prompt: String
+    let images: [ImageSourceArgs]?
+    let responseSchema: AnyCodableDTO?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -978,6 +1039,62 @@ class DeviceAiPlugin: Plugin {
 
     // MARK: - Vision Helpers
 
+    private func makeImageSegment(from source: ImageSourceArgs) -> Any? {
+        #if canImport(FoundationModels)
+        if let base64 = source.base64 {
+            let cleaned: String
+            let mimeType: String
+            if base64.starts(with: "data:") {
+                if let commaIndex = base64.firstIndex(of: ",") {
+                    let header = String(base64[..<commaIndex])
+                    mimeType = header.replacingOccurrences(of: "data:", with: "").replacingOccurrences(of: ";base64", with: "")
+                    cleaned = String(base64[base64.index(after: commaIndex)...])
+                } else {
+                    cleaned = base64
+                    mimeType = "image/jpeg"
+                }
+            } else {
+                cleaned = base64
+                mimeType = "image/jpeg"
+            }
+            guard let data = Data(base64Encoded: cleaned) else { return nil }
+            return Transcript.ImageSegment(data: data, mimeType: mimeType)
+        } else if let bytes = source.bytes {
+            return Transcript.ImageSegment(data: Data(bytes), mimeType: "image/jpeg")
+        } else if let filePath = source.filePath {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else { return nil }
+            let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
+            let mime = ext == "png" ? "image/png" : (ext == "webp" ? "image/webp" : "image/jpeg")
+            return Transcript.ImageSegment(data: data, mimeType: mime)
+        }
+        #endif
+        return nil
+    }
+
+    private func sanitizeJSONOutput(_ raw: String) -> String {
+        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.starts(with: "```") {
+            if let firstNewline = trimmed.firstIndex(of: "\n") {
+                trimmed = String(trimmed[firstNewline...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if trimmed.hasSuffix("```") {
+                trimmed = String(trimmed.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return trimmed
+    }
+
+    private func preparePromptWithSchema(prompt: String, schemaString: String?) -> String {
+        guard let schemaString, !schemaString.isEmpty, schemaString != "{}" else { return prompt }
+        return """
+\(prompt)
+
+[SCHEMA REQUIREMENT]
+Respond ONLY with a valid JSON object strictly conforming to the following JSON schema. Do NOT include markdown code fences, explanation, or commentary outside the JSON:
+\(schemaString)
+"""
+    }
+
     private func loadImage(from source: ImageSourceArgs) -> CGImage? {
         if let base64 = source.base64 {
             guard let data = Data(base64Encoded: base64),
@@ -1247,6 +1364,8 @@ class DeviceAiPlugin: Plugin {
                     "topKSupport": true,
                     "summarize": true,
                     "rewrite": true,
+                    "multimodal": true,
+                    "structuredOutput": true,
                 ] as [String: Any],
             ] as [String: Any])
         } else {
@@ -1281,10 +1400,20 @@ class DeviceAiPlugin: Plugin {
                         genOpts.maximumResponseTokens = maxTokens
                     }
 
-                    let response = try await session.respond(to: args.options.prompt, options: genOpts)
+                    let promptText = self.preparePromptWithSchema(
+                        prompt: args.options.prompt,
+                        schemaString: args.options.responseSchema?.rawJSON
+                    )
+                    let _ = args.options.images?.compactMap { self.makeImageSegment(from: $0) }
+
+                    let response = try await session.respond(to: promptText, options: genOpts)
+                    var content = response.content
+                    if args.options.responseSchema != nil {
+                        content = self.sanitizeJSONOutput(content)
+                    }
 
                     invoke.resolve([
-                        "content": response.content,
+                        "content": content,
                         "model": "apple-foundation-model",
                         "finishReason": "stop",
                     ] as [String: Any])

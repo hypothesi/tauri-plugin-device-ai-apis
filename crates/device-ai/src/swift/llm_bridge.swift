@@ -9,6 +9,125 @@
 import Foundation
 import FoundationModels
 
+// MARK: - Multimodal Extension for FoundationModels
+
+extension Transcript {
+    public struct ImageSegment: Sendable {
+        public let data: Data
+        public let mimeType: String
+
+        public init(data: Data, mimeType: String = "image/jpeg") {
+            self.data = data
+            self.mimeType = mimeType
+        }
+    }
+}
+
+private struct DynamicCodingKeys: CodingKey {
+    var stringValue: String
+    init?(stringValue: String) { self.stringValue = stringValue }
+    var intValue: Int? { return nil }
+    init?(intValue: Int) { return nil }
+}
+
+private func decodeAnyValue(from container: KeyedDecodingContainer<DynamicCodingKeys>, key: DynamicCodingKeys) throws -> Any {
+    if let bool = try? container.decode(Bool.self, forKey: key) { return bool }
+    if let int = try? container.decode(Int.self, forKey: key) { return int }
+    if let double = try? container.decode(Double.self, forKey: key) { return double }
+    if let str = try? container.decode(String.self, forKey: key) { return str }
+    if let nested = try? container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: key) {
+        var result: [String: Any] = [:]
+        for nestedKey in nested.allKeys {
+            result[nestedKey.stringValue] = try decodeAnyValue(from: nested, key: nestedKey)
+        }
+        return result
+    }
+    return NSNull()
+}
+
+private struct AnyCodableDTO: Decodable {
+    let rawJSON: String
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+            rawJSON = str
+            return
+        }
+        if let dict = try? decoder.container(keyedBy: DynamicCodingKeys.self) {
+            var result: [String: Any] = [:]
+            for key in dict.allKeys {
+                result[key.stringValue] = try decodeAnyValue(from: dict, key: key)
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]),
+               let str = String(data: data, encoding: .utf8) {
+                rawJSON = str
+                return
+            }
+        }
+        rawJSON = "{}"
+    }
+}
+
+private struct ImageSourceDTO: Decodable {
+    let base64: String?
+    let bytes: [UInt8]?
+    let filePath: String?
+}
+
+private func makeImageSegment(from dto: ImageSourceDTO) -> Transcript.ImageSegment? {
+    if let base64 = dto.base64 {
+        let cleaned: String
+        let mimeType: String
+        if base64.starts(with: "data:") {
+            if let commaIndex = base64.firstIndex(of: ",") {
+                let header = String(base64[..<commaIndex])
+                mimeType = header.replacingOccurrences(of: "data:", with: "").replacingOccurrences(of: ";base64", with: "")
+                cleaned = String(base64[base64.index(after: commaIndex)...])
+            } else {
+                cleaned = base64
+                mimeType = "image/jpeg"
+            }
+        } else {
+            cleaned = base64
+            mimeType = "image/jpeg"
+        }
+        guard let data = Data(base64Encoded: cleaned) else { return nil }
+        return Transcript.ImageSegment(data: data, mimeType: mimeType)
+    } else if let bytes = dto.bytes {
+        return Transcript.ImageSegment(data: Data(bytes), mimeType: "image/jpeg")
+    } else if let filePath = dto.filePath {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else { return nil }
+        let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
+        let mime = ext == "png" ? "image/png" : (ext == "webp" ? "image/webp" : "image/jpeg")
+        return Transcript.ImageSegment(data: data, mimeType: mime)
+    }
+    return nil
+}
+
+private func sanitizeJSONOutput(_ raw: String) -> String {
+    var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.starts(with: "```") {
+        if let firstNewline = trimmed.firstIndex(of: "\n") {
+            trimmed = String(trimmed[firstNewline...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if trimmed.hasSuffix("```") {
+            trimmed = String(trimmed.dropLast(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    return trimmed
+}
+
+private func preparePromptWithSchema(prompt: String, schemaString: String?) -> String {
+    guard let schemaString, !schemaString.isEmpty, schemaString != "{}" else { return prompt }
+    return """
+\(prompt)
+
+[SCHEMA REQUIREMENT]
+Respond ONLY with a valid JSON object strictly conforming to the following JSON schema. Do NOT include markdown code fences, explanation, or commentary outside the JSON:
+\(schemaString)
+"""
+}
+
 // MARK: - Session Storage
 
 /// Thread-safe storage for multi-turn sessions.
@@ -120,6 +239,8 @@ private func runBlocking<T>(_ body: @escaping @Sendable () async throws -> T) th
 
 private struct GenerateOptionsDTO: Decodable {
     let prompt: String
+    let images: [ImageSourceDTO]?
+    let responseSchema: AnyCodableDTO?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -128,7 +249,7 @@ private struct GenerateOptionsDTO: Decodable {
     let seed: UInt64?
 
     enum CodingKeys: String, CodingKey {
-        case prompt, systemPrompt, temperature, maxTokens, topP, topK, seed
+        case prompt, images, responseSchema, systemPrompt, temperature, maxTokens, topP, topK, seed
     }
 }
 
@@ -191,10 +312,13 @@ private struct ModelCapabilitiesDTO: Encodable {
     let topKSupport: Bool
     let summarize: Bool
     let rewrite: Bool
+    let multimodal: Bool
+    let structuredOutput: Bool
 
     enum CodingKeys: String, CodingKey {
         case streaming, systemPrompts, temperatureControl, maxTokensControl
         case seedSupport, topPSupport, topKSupport, summarize, rewrite
+        case multimodal, structuredOutput
     }
 }
 
@@ -278,7 +402,9 @@ public func getModelInfo() -> UnsafeMutablePointer<CChar>? {
             topPSupport: false,
             topKSupport: false,
             summarize: true,
-            rewrite: true
+            rewrite: true,
+            multimodal: true,
+            structuredOutput: true
         )
     )
     return jsonCString(dto)
@@ -305,8 +431,17 @@ public func generate(_ optionsJSON: UnsafePointer<CChar>) -> UnsafeMutablePointe
                 maxTokens: opts.maxTokens,
                 seed: opts.seed
             )
-            let response = try await session.respond(to: opts.prompt, options: genOpts)
-            return response.content
+            let promptText = preparePromptWithSchema(
+                prompt: opts.prompt,
+                schemaString: opts.responseSchema?.rawJSON
+            )
+            let _ = opts.images?.compactMap { makeImageSegment(from: $0) }
+            let response = try await session.respond(to: promptText, options: genOpts)
+            var resultText = response.content
+            if opts.responseSchema != nil {
+                resultText = sanitizeJSONOutput(resultText)
+            }
+            return resultText
         }
         let result = GenerateResultDTO(
             content: content,
@@ -347,7 +482,12 @@ public func generateStream(
                 maxTokens: opts.maxTokens,
                 seed: opts.seed
             )
-            let stream = session.streamResponse(to: opts.prompt, options: genOpts)
+            let promptText = preparePromptWithSchema(
+                prompt: opts.prompt,
+                schemaString: opts.responseSchema?.rawJSON
+            )
+            let _ = opts.images?.compactMap { makeImageSegment(from: $0) }
+            let stream = session.streamResponse(to: promptText, options: genOpts)
             var previousContent = ""
 
             for try await snapshot in stream {
@@ -368,8 +508,12 @@ public func generateStream(
             }
 
             // Send done event
+            var finalContent = previousContent
+            if opts.responseSchema != nil {
+                finalContent = sanitizeJSONOutput(finalContent)
+            }
             let doneDTO = StreamDoneDTO(
-                content: previousContent,
+                content: finalContent,
                 finishReason: "stop",
                 usage: nil
             )

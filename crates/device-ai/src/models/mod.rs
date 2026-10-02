@@ -780,6 +780,10 @@ pub struct LlmModelCapabilities {
     pub summarize: bool,
     /// Whether text rewriting is supported.
     pub rewrite: bool,
+    /// Whether multimodal input (images) is supported.
+    pub multimodal: bool,
+    /// Whether schema-constrained structured output is supported.
+    pub structured_output: bool,
 }
 
 /// Information about the on-device language model.
@@ -806,6 +810,12 @@ pub struct LlmModelInfo {
 pub struct LlmGenerateOptions {
     /// The prompt to generate text from.
     pub prompt: String,
+    /// Optional image inputs for multimodal prompts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<ImageSource>>,
+    /// Optional JSON schema constraining structured output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_schema: Option<serde_json::Value>,
     /// Optional system prompt to set model behavior.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -831,6 +841,8 @@ impl LlmGenerateOptions {
     pub fn new(prompt: impl Into<String>) -> Self {
         Self {
             prompt: prompt.into(),
+            images: None,
+            response_schema: None,
             system_prompt: None,
             temperature: None,
             max_tokens: None,
@@ -838,6 +850,26 @@ impl LlmGenerateOptions {
             top_k: None,
             seed: None,
         }
+    }
+
+    /// Set optional image inputs for multimodal prompting.
+    pub fn images(mut self, images: Vec<ImageSource>) -> Self {
+        self.images = Some(images);
+        self
+    }
+
+    /// Add a single image input for multimodal prompting.
+    pub fn with_image(mut self, image: ImageSource) -> Self {
+        let mut images = self.images.unwrap_or_default();
+        images.push(image);
+        self.images = Some(images);
+        self
+    }
+
+    /// Set an optional JSON schema to constrain output generation.
+    pub fn response_schema(mut self, schema: serde_json::Value) -> Self {
+        self.response_schema = Some(schema);
+        self
     }
 
     /// Set the optional system prompt.
@@ -1513,6 +1545,8 @@ mod tests {
     fn test_llm_generate_options_serialization() {
         let opts = LlmGenerateOptions {
             prompt: "Hello".to_string(),
+            images: None,
+            response_schema: None,
             system_prompt: Some("Be helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(512),
@@ -1664,6 +1698,8 @@ mod tests {
                 top_k_support: false,
                 summarize: true,
                 rewrite: true,
+                multimodal: true,
+                structured_output: true,
             },
         };
         let json = serde_json::to_string(&info).unwrap();
@@ -1699,5 +1735,30 @@ mod tests {
         let caps = Capabilities::default();
         let json = serde_json::to_string(&caps).unwrap();
         assert!(json.contains("\"languageModel\""));
+    }
+
+    #[test]
+    fn test_llm_multimodal_and_schema_options() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "sentiment": { "type": "string" }
+            }
+        });
+        let opts = LlmGenerateOptions::new("Classify image sentiment")
+            .with_image(ImageSource::from_base64("aW1hZ2VkYXRh"))
+            .response_schema(schema.clone());
+
+        let json = serde_json::to_string(&opts).unwrap();
+        assert!(json.contains("\"prompt\":\"Classify image sentiment\""));
+        assert!(json.contains("\"images\":[{\"base64\":\"aW1hZ2VkYXRh\"}]"));
+        assert!(json.contains("\"responseSchema\":"));
+        assert!(json.contains("\"sentiment\""));
+
+        let deserialized: LlmGenerateOptions = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.prompt, "Classify image sentiment");
+        assert!(deserialized.images.is_some());
+        assert_eq!(deserialized.images.as_ref().unwrap().len(), 1);
+        assert_eq!(deserialized.response_schema, Some(schema));
     }
 }

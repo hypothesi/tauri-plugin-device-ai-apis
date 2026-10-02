@@ -2048,18 +2048,12 @@ mod llm_ffi {
             "Summarize the following text concisely:\n\n{}",
             options.text
         );
-        let gen_options = LlmGenerateOptions {
-            prompt,
-            system_prompt: Some(
-                "You are a text summarization assistant. Provide concise, accurate summaries."
-                    .to_string(),
-            ),
-            temperature: Some(0.3),
-            max_tokens: Some(512),
-            top_p: None,
-            top_k: None,
-            seed: None,
-        };
+        let gen_options = LlmGenerateOptions::new(prompt)
+            .system_prompt(
+                "You are a text summarization assistant. Provide concise, accurate summaries.",
+            )
+            .temperature(0.3)
+            .max_tokens(512);
         let result = generate(gen_options)?;
         Ok(LlmSummarizeResult {
             summary: result.content,
@@ -2078,18 +2072,12 @@ mod llm_ffi {
             "Rewrite the following text {tone_instruction}:\n\n{}",
             options.text
         );
-        let gen_options = LlmGenerateOptions {
-            prompt,
-            system_prompt: Some(
-                "You are a text rewriting assistant. Rewrite the text as instructed, preserving the original meaning."
-                    .to_string(),
-            ),
-            temperature: Some(0.5),
-            max_tokens: Some(1024),
-            top_p: None,
-            top_k: None,
-            seed: None,
-        };
+        let gen_options = LlmGenerateOptions::new(prompt)
+            .system_prompt(
+                "You are a text rewriting assistant. Rewrite the text as instructed, preserving the original meaning.",
+            )
+            .temperature(0.5)
+            .max_tokens(1024);
         let result = generate(gen_options)?;
         Ok(LlmRewriteResult {
             rewritten_text: result.content,

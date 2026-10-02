@@ -83,6 +83,50 @@ export async function generate(options: LlmGenerateOptions): Promise<LlmGenerate
 }
 
 /**
+ * Generate structured data conforming to a JSON schema using the on-device model.
+ *
+ * Automatically attaches schema constraints and parses the resulting JSON.
+ *
+ * @param prompt Prompt instructing the model what data to generate.
+ * @param schema JSON schema definition constraining the response structure.
+ * @param options Additional generation options.
+ * @returns Parsed JSON output matching the schema.
+ * @throws If generation fails or output cannot be parsed as JSON.
+ *
+ * @example
+ * ```typescript
+ * interface Recipe {
+ *   title: string;
+ *   ingredients: string[];
+ * }
+ * const recipe = await generateStructured<Recipe>(
+ *   "Provide a recipe for chocolate chip cookies.",
+ *   {
+ *     type: "object",
+ *     properties: {
+ *       title: { type: "string" },
+ *       ingredients: { type: "array", items: { type: "string" } },
+ *     },
+ *     required: ["title", "ingredients"],
+ *   }
+ * );
+ * console.log(recipe.title);
+ * ```
+ */
+export async function generateStructured<T = unknown>(
+  prompt: string,
+  schema: Record<string, unknown> | string,
+  options?: Omit<LlmGenerateOptions, "prompt" | "responseSchema">,
+): Promise<T> {
+  const result = await generate({
+    ...options,
+    prompt,
+    responseSchema: schema,
+  });
+  return JSON.parse(result.content) as T;
+}
+
+/**
  * Stream text generation from the on-device language model.
  *
  * Tokens are delivered incrementally via the callback as they are generated.

@@ -434,6 +434,10 @@ export interface LlmModelCapabilities {
   summarize: boolean;
   /** Whether text rewriting is supported. */
   rewrite: boolean;
+  /** Whether multimodal prompt inputs (images) are supported. */
+  multimodal: boolean;
+  /** Whether schema-constrained structured output is supported. */
+  structuredOutput: boolean;
 }
 
 /**
@@ -460,6 +464,10 @@ export interface LlmModelInfo {
 export interface LlmGenerateOptions {
   /** The prompt to generate from. */
   prompt: string;
+  /** Optional image inputs for multimodal prompts. */
+  images?: ImageSource[];
+  /** Optional JSON schema (object or string) constraining structured output. */
+  responseSchema?: Record<string, unknown> | string;
   /** Optional system prompt to guide the model's behavior. */
   systemPrompt?: string;
   /** Sampling temperature (0.0 to 2.0). */
