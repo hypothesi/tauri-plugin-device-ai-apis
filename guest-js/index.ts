@@ -41,6 +41,8 @@ export type {
   RecognitionOptions,
   RecognitionResult,
   RecognitionAlternative,
+  SpeechTranscriptEvent,
+  SpeechTranscriptListener,
   SynthesisOptions,
   Voice,
   VoiceQuality,

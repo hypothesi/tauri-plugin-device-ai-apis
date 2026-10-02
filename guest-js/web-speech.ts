@@ -6,6 +6,7 @@
 import type {
   RecognitionOptions,
   RecognitionResult,
+  SpeechTranscriptListener,
   SynthesisOptions,
   Voice,
   VoiceGender,
@@ -130,7 +131,10 @@ export async function webRecognize(options?: RecognitionOptions): Promise<Recogn
 /**
  * Start streaming speech recognition using Web Speech API.
  */
-export function webStartRecognition(options?: RecognitionOptions): string {
+export function webStartRecognition(
+  options?: RecognitionOptions,
+  onTranscript?: SpeechTranscriptListener,
+): string {
   const SR = getSpeechRecognition();
   if (!SR) {
     throw new Error("Web Speech API not available");
@@ -142,6 +146,34 @@ export function webStartRecognition(options?: RecognitionOptions): string {
   recognition.interimResults = options?.interimResults ?? true;
   recognition.lang = options?.language ?? "en-US";
   recognition.maxAlternatives = 5;
+
+  if (onTranscript) {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const result = event.results[event.results.length - 1];
+      if (result) {
+        const text = result[0]?.transcript ?? "";
+        const confidence = result[0]?.confidence ?? 0;
+        const isFinal = result.isFinal;
+        const alternatives = [];
+        for (let i = 0; i < result.length; i++) {
+          const alt = result[i];
+          if (alt) {
+            alternatives.push({
+              text: alt.transcript,
+              confidence: alt.confidence,
+            });
+          }
+        }
+        onTranscript({
+          sessionId,
+          text,
+          confidence,
+          isFinal,
+          alternatives,
+        });
+      }
+    };
+  }
 
   activeSessions.set(sessionId, recognition);
 

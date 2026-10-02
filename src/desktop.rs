@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use serde::de::DeserializeOwned;
 use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
@@ -7,19 +5,19 @@ use crate::models::*;
 use crate::{DeviceAi, Error};
 
 pub fn init<R: Runtime, C: DeserializeOwned>(
-    _app: &AppHandle<R>,
+    app: &AppHandle<R>,
     _api: PluginApi<R, C>,
 ) -> crate::Result<DeviceAiApis<R>> {
     Ok(DeviceAiApis {
         inner: DeviceAi::new(),
-        runtime: PhantomData,
+        app: app.clone(),
     })
 }
 
 /// Access to the device-ai-apis APIs on desktop platforms.
 pub struct DeviceAiApis<R: Runtime> {
     inner: DeviceAi,
-    runtime: PhantomData<fn() -> R>,
+    app: AppHandle<R>,
 }
 
 impl<R: Runtime> DeviceAiApis<R> {
@@ -41,6 +39,16 @@ impl<R: Runtime> DeviceAiApis<R> {
         &self,
         options: RecognitionOptions,
     ) -> crate::Result<SpeechSessionId> {
+        #[cfg(target_os = "macos")]
+        {
+            use tauri::Emitter;
+            let app = self.app.clone();
+            device_ai::macos::set_speech_transcript_callback(Some(std::sync::Arc::new(
+                move |event| {
+                    let _ = app.emit("plugin:device-ai-apis:speech-transcript", &event);
+                },
+            )));
+        }
         self.inner.speech().start_recognition(options)
     }
 

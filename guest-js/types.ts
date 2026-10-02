@@ -72,6 +72,24 @@ export interface RecognitionAlternative {
 }
 
 /**
+ * Event emitted during streaming speech recognition.
+ */
+export interface SpeechTranscriptEvent {
+  /** Session identifier. */
+  sessionId: string;
+  /** The recognized text so far. */
+  text: string;
+  /** Confidence score from 0.0 to 1.0. */
+  confidence: number;
+  /** Whether this is a final result or an interim partial transcript. */
+  isFinal: boolean;
+  /** Alternative transcriptions with their confidence scores. */
+  alternatives?: RecognitionAlternative[];
+}
+
+export type SpeechTranscriptListener = (event: SpeechTranscriptEvent) => void;
+
+/**
  * Result of speech recognition.
  */
 export interface RecognitionResult {

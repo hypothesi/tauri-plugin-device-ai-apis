@@ -184,6 +184,23 @@ impl AudioSource {
     }
 }
 
+/// Event emitted during streaming speech recognition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechTranscriptEvent {
+    /// Session identifier.
+    pub session_id: SpeechSessionId,
+    /// The recognized text so far.
+    pub text: String,
+    /// Confidence score from 0.0 to 1.0.
+    pub confidence: f32,
+    /// Whether this is a final result or an interim partial transcript.
+    pub is_final: bool,
+    /// Alternative transcriptions with confidence scores.
+    #[serde(default)]
+    pub alternatives: Vec<RecognitionAlternative>,
+}
+
 /// Result of speech recognition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1188,6 +1205,30 @@ mod tests {
         assert_eq!(opts.language.as_deref(), Some("en-US"));
         assert!(opts.continuous);
         assert!(opts.interim_results);
+    }
+
+    #[test]
+    fn test_speech_transcript_event_serialization() {
+        let event = SpeechTranscriptEvent {
+            session_id: "test-session-123".to_string(),
+            text: "Hello world".to_string(),
+            confidence: 0.95,
+            is_final: false,
+            alternatives: vec![RecognitionAlternative {
+                text: "Yellow world".to_string(),
+                confidence: 0.6,
+            }],
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"sessionId\":\"test-session-123\""));
+        assert!(json.contains("\"text\":\"Hello world\""));
+        assert!(json.contains("\"isFinal\":false"));
+
+        let deserialized: SpeechTranscriptEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.session_id, "test-session-123");
+        assert_eq!(deserialized.text, "Hello world");
+        assert!(!deserialized.is_final);
+        assert_eq!(deserialized.alternatives.len(), 1);
     }
 
     #[test]

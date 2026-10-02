@@ -4,7 +4,34 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { RecognitionOptions, RecognitionResult, SynthesisOptions, Voice } from "./types";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  RecognitionOptions,
+  RecognitionResult,
+  SpeechTranscriptEvent,
+  SpeechTranscriptListener,
+  SynthesisOptions,
+  Voice,
+} from "./types";
+
+const activeUnlisteners = new Map<string, UnlistenFn>();
+
+/**
+ * Listen for real-time speech recognition transcript events across sessions.
+ *
+ * @param listener Callback invoked whenever transcript deltas or final results arrive.
+ * @returns An unlisten function to stop receiving events.
+ */
+export async function onSpeechTranscript(
+  listener: SpeechTranscriptListener,
+): Promise<UnlistenFn> {
+  if (isTauri()) {
+    return listen<SpeechTranscriptEvent>("plugin:device-ai-apis:speech-transcript", (event) => {
+      listener(event.payload);
+    });
+  }
+  return () => {};
+}
 import { isTauri, hasWebSpeechRecognition, hasWebSpeechSynthesis } from "./platform";
 import {
   webRecognize,
@@ -56,14 +83,25 @@ export async function recognize(options?: RecognitionOptions): Promise<Recogniti
  * @param options Recognition options.
  * @returns The session ID.
  */
-export async function startRecognition(options?: RecognitionOptions): Promise<string> {
+export async function startRecognition(
+  options?: RecognitionOptions,
+  onTranscript?: SpeechTranscriptListener,
+): Promise<string> {
   if (isTauri()) {
-    return invoke<string>("plugin:device-ai-apis|speech_recognize_start", {
+    let unlisten: UnlistenFn | undefined;
+    if (onTranscript) {
+      unlisten = await onSpeechTranscript(onTranscript);
+    }
+    const sessionId = await invoke<string>("plugin:device-ai-apis|speech_recognize_start", {
       options: options ?? {},
     });
+    if (unlisten) {
+      activeUnlisteners.set(sessionId, unlisten);
+    }
+    return sessionId;
   }
   if (hasWebSpeechRecognition()) {
-    return webStartRecognition(options);
+    return webStartRecognition(options, onTranscript);
   }
   throw new Error("Speech recognition not available on this platform");
 }
@@ -75,6 +113,11 @@ export async function startRecognition(options?: RecognitionOptions): Promise<st
  * @returns The final recognition result.
  */
 export async function stopRecognition(sessionId: string): Promise<RecognitionResult> {
+  const unlisten = activeUnlisteners.get(sessionId);
+  if (unlisten) {
+    unlisten();
+    activeUnlisteners.delete(sessionId);
+  }
   if (isTauri()) {
     return invoke<RecognitionResult>("plugin:device-ai-apis|speech_recognize_stop", {
       sessionId,

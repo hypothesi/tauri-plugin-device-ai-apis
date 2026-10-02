@@ -792,6 +792,212 @@ fn data_take_error(session: &mut LiveSession) -> Option<crate::Error> {
     session.error.take()
 }
 
+// MARK: - Streaming Speech Recognition
+
+struct StreamingSpeechSession {
+    audio_engine: usize,
+    input_node: usize,
+    request: usize,
+    task: usize,
+    latest_result: Arc<Mutex<Option<crate::models::RecognitionResult>>>,
+}
+
+unsafe impl Send for StreamingSpeechSession {}
+unsafe impl Sync for StreamingSpeechSession {}
+
+static STREAMING_SESSIONS: std::sync::OnceLock<
+    Mutex<std::collections::HashMap<String, StreamingSpeechSession>>,
+> = std::sync::OnceLock::new();
+
+fn get_streaming_sessions(
+) -> &'static Mutex<std::collections::HashMap<String, StreamingSpeechSession>> {
+    STREAMING_SESSIONS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+pub type SpeechTranscriptCallback =
+    Arc<dyn Fn(crate::models::SpeechTranscriptEvent) + Send + Sync + 'static>;
+static TRANSCRIPT_CALLBACK: std::sync::OnceLock<
+    std::sync::RwLock<Option<SpeechTranscriptCallback>>,
+> = std::sync::OnceLock::new();
+
+fn get_transcript_callback() -> &'static std::sync::RwLock<Option<SpeechTranscriptCallback>> {
+    TRANSCRIPT_CALLBACK.get_or_init(|| std::sync::RwLock::new(None))
+}
+
+/// Set a global callback to receive streaming speech transcript deltas.
+pub fn set_speech_transcript_callback(callback: Option<SpeechTranscriptCallback>) {
+    let mut lock = get_transcript_callback().write().unwrap();
+    *lock = callback;
+}
+
+/// Start streaming speech recognition.
+pub fn speech_recognize_start(
+    options: crate::models::RecognitionOptions,
+) -> Result<crate::models::SpeechSessionId> {
+    unsafe {
+        let recognizer = create_available_speech_recognizer(&options)?;
+
+        let audio_engine: *mut AnyObject = msg_send![class!(AVAudioEngine), new];
+        let input_node: *mut AnyObject = msg_send![audio_engine, inputNode];
+
+        let request: *mut AnyObject = msg_send![class!(SFSpeechAudioBufferRecognitionRequest), new];
+        let _: () = msg_send![request, setShouldReportPartialResults: true];
+
+        let session: *mut AnyObject = msg_send![class!(AVAudioSession), sharedInstance];
+        let category = NSString::from_str("AVAudioSessionCategoryRecord");
+        let mode = NSString::from_str("AVAudioSessionModeMeasurement");
+        let mut session_error: *mut NSError = std::ptr::null_mut();
+        let _: bool = msg_send![session, setCategory: &*category, mode: &*mode, options: 0usize, error: &mut session_error];
+        let _: bool =
+            msg_send![session, setActive: true, withOptions: 0usize, error: &mut session_error];
+
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let latest_result = Arc::new(Mutex::new(None));
+        let latest_clone = latest_result.clone();
+        let session_id_clone = session_id.clone();
+
+        let block =
+            block2::StackBlock::new(move |result: *mut AnyObject, error: *mut AnyObject| {
+                if !error.is_null() {
+                    return;
+                }
+                if !result.is_null() {
+                    let best_transcription: *mut AnyObject = msg_send![result, bestTranscription];
+                    if best_transcription.is_null() {
+                        return;
+                    }
+                    let formatted_string: *mut AnyObject =
+                        msg_send![best_transcription, formattedString];
+                    if formatted_string.is_null() {
+                        return;
+                    }
+                    let ns_str: &NSString = &*(formatted_string as *const NSString);
+                    let text = ns_str.to_string();
+
+                    let is_final: bool = msg_send![result, isFinal];
+                    let confidence = extract_transcription_confidence(best_transcription);
+
+                    let recognition_result = crate::models::RecognitionResult {
+                        text: text.clone(),
+                        confidence,
+                        is_final,
+                        alternatives: vec![],
+                    };
+
+                    {
+                        let mut lock = latest_clone.lock().unwrap_or_else(|e| e.into_inner());
+                        *lock = Some(recognition_result);
+                    }
+
+                    if let Some(cb) = &*get_transcript_callback().read().unwrap() {
+                        cb(crate::models::SpeechTranscriptEvent {
+                            session_id: session_id_clone.clone(),
+                            text,
+                            confidence,
+                            is_final,
+                            alternatives: vec![],
+                        });
+                    }
+                }
+            });
+        let block = block.copy();
+
+        let task: *mut AnyObject =
+            msg_send![recognizer, recognitionTaskWithRequest: request, resultHandler: &*block];
+        if task.is_null() {
+            return Err(Error::SpeechRecognitionFailed {
+                message: "Failed to start recognition task".to_string(),
+            });
+        }
+
+        let recording_format: *mut AnyObject = msg_send![input_node, outputFormatForBus: 0usize];
+        let tap_block =
+            block2::StackBlock::new(move |buffer: *mut AnyObject, _when: *mut AnyObject| {
+                let _: () = msg_send![request, appendAudioPCMBuffer: buffer];
+            });
+        let tap_block = tap_block.copy();
+
+        let _: () = msg_send![input_node, installTapOnBus: 0usize, bufferSize: 1024u32, format: recording_format, block: &*tap_block];
+
+        let mut engine_error: *mut NSError = std::ptr::null_mut();
+        let started: bool = msg_send![audio_engine, startAndReturnError: &mut engine_error];
+        if !started {
+            return Err(Error::SpeechRecognitionFailed {
+                message: "Failed to start audio engine".to_string(),
+            });
+        }
+
+        let _: *mut AnyObject = msg_send![audio_engine, retain];
+        let _: *mut AnyObject = msg_send![input_node, retain];
+        let _: *mut AnyObject = msg_send![request, retain];
+        let _: *mut AnyObject = msg_send![task, retain];
+
+        let streaming_session = StreamingSpeechSession {
+            audio_engine: audio_engine as usize,
+            input_node: input_node as usize,
+            request: request as usize,
+            task: task as usize,
+            latest_result,
+        };
+
+        let mut sessions = get_streaming_sessions().lock().unwrap();
+        sessions.insert(session_id.clone(), streaming_session);
+
+        Ok(session_id)
+    }
+}
+
+/// Stop streaming speech recognition and retrieve final transcription result.
+pub fn speech_recognize_stop(
+    session_id: crate::models::SpeechSessionId,
+) -> Result<crate::models::RecognitionResult> {
+    let session = {
+        let mut sessions = get_streaming_sessions().lock().unwrap();
+        sessions.remove(&session_id)
+    };
+
+    let session = match session {
+        Some(s) => s,
+        None => {
+            return Err(Error::SpeechRecognitionFailed {
+                message: format!("Speech session not found: {session_id}"),
+            });
+        }
+    };
+
+    unsafe {
+        let audio_engine = session.audio_engine as *mut AnyObject;
+        let input_node = session.input_node as *mut AnyObject;
+        let request = session.request as *mut AnyObject;
+        let task = session.task as *mut AnyObject;
+
+        let _: () = msg_send![audio_engine, stop];
+        let _: () = msg_send![input_node, removeTapOnBus: 0usize];
+        let _: () = msg_send![request, endAudio];
+        let _: () = msg_send![task, cancel];
+
+        let _: () = msg_send![audio_engine, release];
+        let _: () = msg_send![input_node, release];
+        let _: () = msg_send![request, release];
+        let _: () = msg_send![task, release];
+    }
+
+    let result = {
+        let lock = session
+            .latest_result
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        lock.clone().unwrap_or(crate::models::RecognitionResult {
+            text: String::new(),
+            confidence: 0.0,
+            is_final: true,
+            alternatives: vec![],
+        })
+    };
+
+    Ok(result)
+}
+
 // =============================================================================
 // Speech Synthesis
 // =============================================================================

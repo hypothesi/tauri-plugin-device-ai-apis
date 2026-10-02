@@ -84,6 +84,10 @@ class SpeechRecognizeArgs: Decodable {
     let options: RecognitionOptionsArgs?
 }
 
+class SpeechRecognizeStopArgs: Decodable {
+    let sessionId: String
+}
+
 class SpeechSessionArgs: Decodable {
     let sessionId: String
 }
@@ -421,11 +425,29 @@ func llmSessionNotFound(_ sessionId: String) -> PluginError {
 // MARK: - Plugin Implementation
 
 class DeviceAiPlugin: Plugin {
+    private class StreamingSpeechSession {
+        let audioEngine: AVAudioEngine
+        let recognitionRequest: SFSpeechAudioBufferRecognitionRequest
+        let recognitionTask: SFSpeechRecognitionTask
+        var lastResult: RecognitionResult?
+
+        init(
+            audioEngine: AVAudioEngine,
+            recognitionRequest: SFSpeechAudioBufferRecognitionRequest,
+            recognitionTask: SFSpeechRecognitionTask
+        ) {
+            self.audioEngine = audioEngine
+            self.recognitionRequest = recognitionRequest
+            self.recognitionTask = recognitionTask
+        }
+    }
+
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var audioEngine: AVAudioEngine?
     private var activeSessions: [String: SFSpeechRecognitionTask] = [:]
+    private var streamingSessions: [String: StreamingSpeechSession] = [:]
     private let speechSynthesizer = AVSpeechSynthesizer()
 
     // Live-session state. Mirrors `crates/device-ai/src/speech_live_ctrl.rs`
@@ -725,12 +747,112 @@ class DeviceAiPlugin: Plugin {
     }
 
     @objc public func speechRecognizeStart(_ invoke: Invoke) throws {
-        // For now, return not available - streaming requires more complex setup
-        invoke.reject(featureNotAvailable("streamingSpeechRecognition"))
+        let args = try invoke.parseArgs(SpeechRecognizeArgs.self)
+        let languageCode = args.options?.language ?? Locale.current.identifier
+
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: languageCode)) else {
+            invoke.reject(speechRecognitionFailed("Speech recognizer not available for language: \(languageCode)"))
+            return
+        }
+
+        guard recognizer.isAvailable else {
+            invoke.reject(featureNotAvailable("speechRecognition"))
+            return
+        }
+
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard status == .authorized else {
+                    invoke.reject(self.permissionDenied("speechRecognition"))
+                    return
+                }
+
+                let engine = AVAudioEngine()
+                let request = SFSpeechAudioBufferRecognitionRequest()
+                request.shouldReportPartialResults = true
+
+                let audioSession = AVAudioSession.sharedInstance()
+                do {
+                    try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+                    try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+                } catch {
+                    invoke.reject(self.speechRecognitionFailed("Failed to configure audio session: \(error.localizedDescription)"))
+                    return
+                }
+
+                let inputNode = engine.inputNode
+                let recordingFormat = inputNode.outputFormat(forBus: 0)
+                inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+                    request.append(buffer)
+                }
+
+                engine.prepare()
+                do {
+                    try engine.start()
+                } catch {
+                    invoke.reject(self.speechRecognitionFailed("Failed to start audio engine: \(error.localizedDescription)"))
+                    return
+                }
+
+                let sessionId = UUID().uuidString
+
+                let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                    guard let self = self else { return }
+                    if let result = result {
+                        let bestTranscription = result.bestTranscription
+                        let isFinal = result.isFinal
+                        let alternatives = result.transcriptions.dropFirst().prefix(3).map {
+                            RecognitionAlternative(text: $0.formattedString, confidence: 0.8)
+                        }
+                        let recResult = RecognitionResult(
+                            text: bestTranscription.formattedString,
+                            confidence: 0.9,
+                            isFinal: isFinal,
+                            alternatives: Array(alternatives)
+                        )
+                        self.streamingSessions[sessionId]?.lastResult = recResult
+
+                        self.trigger("plugin:device-ai-apis:speech-transcript", data: [
+                            "sessionId": sessionId,
+                            "text": bestTranscription.formattedString,
+                            "confidence": 0.9,
+                            "isFinal": isFinal,
+                            "alternatives": alternatives.map { ["text": $0.text, "confidence": $0.confidence] }
+                        ])
+                    }
+                }
+
+                self.streamingSessions[sessionId] = StreamingSpeechSession(
+                    audioEngine: engine,
+                    recognitionRequest: request,
+                    recognitionTask: task
+                )
+
+                invoke.resolve(sessionId)
+            }
+        }
     }
 
     @objc public func speechRecognizeStop(_ invoke: Invoke) throws {
-        invoke.reject(featureNotAvailable("streamingSpeechRecognition"))
+        let args = try invoke.parseArgs(SpeechRecognizeStopArgs.self)
+        guard let session = streamingSessions.removeValue(forKey: args.sessionId) else {
+            invoke.reject(speechRecognitionFailed("Speech session not found: \(args.sessionId)"))
+            return
+        }
+
+        session.audioEngine.stop()
+        session.audioEngine.inputNode.removeTap(onBus: 0)
+        session.recognitionRequest.endAudio()
+        session.recognitionTask.cancel()
+
+        let result = session.lastResult ?? RecognitionResult(
+            text: "",
+            confidence: 0.0,
+            isFinal: true,
+            alternatives: []
+        )
+        invoke.resolve(result)
     }
 
     // MARK: - Speech Synthesis

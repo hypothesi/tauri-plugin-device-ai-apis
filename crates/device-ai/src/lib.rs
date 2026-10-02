@@ -50,7 +50,7 @@ mod models;
 pub mod speech_live_ctrl;
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub mod macos;
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -215,24 +215,36 @@ impl Speech<'_> {
 
     /// Start streaming speech recognition.
     ///
-    /// Streaming recognition is not yet implemented. Returns an error.
-    pub fn start_recognition(&self, _options: RecognitionOptions) -> Result<SpeechSessionId> {
+    /// Returns a session ID that can be used to stop the session.
+    pub fn start_recognition(&self, options: RecognitionOptions) -> Result<SpeechSessionId> {
         let _ = self.0;
 
-        Err(Error::SpeechRecognitionFailed {
-            message: "Streaming speech recognition is not yet implemented. Use recognize() for one-shot recognition instead.".to_string(),
-        })
+        #[cfg(target_os = "macos")]
+        {
+            macos::speech_recognize_start(options)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = options;
+            Err(feature_not_available("streamingSpeechRecognition"))
+        }
     }
 
     /// Stop streaming speech recognition.
     ///
-    /// Streaming recognition is not yet implemented. Returns an error.
-    pub fn stop_recognition(&self, _session_id: SpeechSessionId) -> Result<RecognitionResult> {
+    /// Stops the audio stream and returns the accumulated transcription.
+    pub fn stop_recognition(&self, session_id: SpeechSessionId) -> Result<RecognitionResult> {
         let _ = self.0;
 
-        Err(Error::SpeechRecognitionFailed {
-            message: "Streaming speech recognition is not yet implemented. Use recognize() for one-shot recognition instead.".to_string(),
-        })
+        #[cfg(target_os = "macos")]
+        {
+            macos::speech_recognize_stop(session_id)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = session_id;
+            Err(feature_not_available("streamingSpeechRecognition"))
+        }
     }
 
     /// Synthesize and play text as speech.
@@ -850,6 +862,22 @@ mod tests {
             .check_translation_availability("xyz", "abc")
             .unwrap();
         assert_eq!(unsupp.status, TranslationStatus::Unsupported);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_stop_recognition_nonexistent_session() {
+        let ai = DeviceAi::new();
+        let result = ai
+            .speech()
+            .stop_recognition("nonexistent-session-id".to_string());
+        assert!(result.is_err());
+        match result {
+            Err(Error::SpeechRecognitionFailed { message }) => {
+                assert!(message.contains("Speech session not found"));
+            }
+            other => panic!("Expected SpeechRecognitionFailed, got: {:?}", other),
+        }
     }
 
     #[test]
