@@ -76,6 +76,9 @@ export type {
   LlmModelCapabilities,
   LlmModelInfo,
   LlmModelTargetInfo,
+  ToolCallingMode,
+  LlmTool,
+  LlmToolCall,
   LlmGenerateOptions,
   LlmFinishReason,
   LlmUsage,
@@ -98,6 +101,7 @@ export {
   isLanguageNotSupported,
   isNoSpeechDetected,
   isLlmContextExceeded,
+  isLlmToolExecutionFailed,
   normalizeDeviceAiError,
 } from "./errors";
 export type { DeviceAiError, DeviceAiErrorCode, DeviceAiErrorDetails } from "./errors";

@@ -207,6 +207,9 @@ fn print_stream_event(event: LlmStreamEvent) {
                 );
             }
         }
+        LlmStreamEvent::ToolCall { tool_call } => {
+            println!("\n[tool_call: {} id={}]", tool_call.name, tool_call.id);
+        }
         LlmStreamEvent::Error { message } => eprintln!("stream error: {message}"),
     }
 }

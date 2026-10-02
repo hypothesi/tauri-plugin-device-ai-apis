@@ -2106,6 +2106,17 @@ mod llm_ffi {
                         message: err_msg.to_string(),
                     });
                 }
+                if code == Some("LLM_TOOL_EXECUTION_FAILED") {
+                    let tool_name = err_obj
+                        .get("toolName")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("perception")
+                        .to_string();
+                    return Err(Error::LlmToolExecutionFailed {
+                        tool_name,
+                        message: err_msg.to_string(),
+                    });
+                }
                 if err_msg.starts_with("Session not found") {
                     return Err(Error::LlmSessionNotFound {
                         session_id: err_msg

@@ -801,6 +801,8 @@ pub struct LlmModelCapabilities {
     pub multimodal: bool,
     /// Whether schema-constrained structured output is supported.
     pub structured_output: bool,
+    /// Whether perception and system tool calling is supported.
+    pub tool_calling: bool,
 }
 
 /// Information about an available model target (e.g., system on-device vs Private Cloud Compute).
@@ -838,6 +840,71 @@ pub struct LlmModelInfo {
     pub available_targets: Vec<LlmModelTargetInfo>,
 }
 
+/// Tool calling mode for language model generation or sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolCallingMode {
+    /// Model automatically decides whether to call tools.
+    Auto,
+    /// Model is required to call at least one tool.
+    Required,
+    /// Tool calling is disabled.
+    None,
+}
+
+/// A tool definition available to the language model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmTool {
+    /// Tool type: "ocr", "barcode", or "custom".
+    pub r#type: String,
+    /// Optional tool name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Optional description of the tool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Optional parameters schema for the tool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<serde_json::Value>,
+}
+
+impl LlmTool {
+    /// Built-in system OCR perception tool.
+    pub fn ocr() -> Self {
+        Self {
+            r#type: "ocr".to_string(),
+            name: Some("ocr".to_string()),
+            description: Some("Recognize printed and handwritten text in image inputs".to_string()),
+            parameters: None,
+        }
+    }
+
+    /// Built-in system barcode reader perception tool.
+    pub fn barcode() -> Self {
+        Self {
+            r#type: "barcode".to_string(),
+            name: Some("barcode".to_string()),
+            description: Some(
+                "Detect and decode 1D and 2D barcodes or QR codes in image inputs".to_string(),
+            ),
+            parameters: None,
+        }
+    }
+}
+
+/// A tool call executed or initiated by the language model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmToolCall {
+    /// Unique identifier for this tool call.
+    pub id: String,
+    /// Name of the tool called.
+    pub name: String,
+    /// Arguments provided to the tool.
+    pub arguments: serde_json::Value,
+}
+
 /// Options for language model text generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -853,6 +920,15 @@ pub struct LlmGenerateOptions {
     /// Optional model target architecture (e.g., "system", "private-cloud-compute").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_target: Option<String>,
+    /// Optional perception or custom tools enabled for generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<LlmTool>>,
+    /// Mode for tool calling (auto, required, none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolCallingMode>,
+    /// Maximum allowed tool call iterations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<u32>,
     /// Optional system prompt to set model behavior.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -881,6 +957,9 @@ impl LlmGenerateOptions {
             images: None,
             response_schema: None,
             model_target: None,
+            tools: None,
+            tool_choice: None,
+            max_tool_calls: None,
             system_prompt: None,
             temperature: None,
             max_tokens: None,
@@ -913,6 +992,32 @@ impl LlmGenerateOptions {
     /// Set the model target (e.g., "system", "private-cloud-compute").
     pub fn model_target(mut self, model_target: impl Into<String>) -> Self {
         self.model_target = Some(model_target.into());
+        self
+    }
+
+    /// Set tools available for this generation.
+    pub fn tools(mut self, tools: Vec<LlmTool>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Add a single tool.
+    pub fn with_tool(mut self, tool: LlmTool) -> Self {
+        let mut tools = self.tools.unwrap_or_default();
+        tools.push(tool);
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Set the tool calling mode.
+    pub fn tool_choice(mut self, mode: ToolCallingMode) -> Self {
+        self.tool_choice = Some(mode);
+        self
+    }
+
+    /// Set the maximum number of tool calls allowed.
+    pub fn max_tool_calls(mut self, max: u32) -> Self {
+        self.max_tool_calls = Some(max);
         self
     }
 
@@ -992,6 +1097,9 @@ pub struct LlmGenerateResult {
     pub model: String,
     /// Why the model stopped generating.
     pub finish_reason: LlmFinishReason,
+    /// Tool calls performed during generation, if any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<LlmToolCall>,
     /// Token usage statistics, if available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<LlmUsage>,
@@ -1005,6 +1113,11 @@ pub enum LlmStreamEvent {
     Delta {
         /// The new text chunk.
         content: String,
+    },
+    /// A tool call event during streaming generation.
+    ToolCall {
+        /// The tool call initiated by the model.
+        tool_call: LlmToolCall,
     },
     /// Generation is complete.
     Done {
@@ -1031,6 +1144,15 @@ pub struct LlmSessionOptions {
     /// Optional model target architecture (e.g., "system", "private-cloud-compute").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_target: Option<String>,
+    /// Optional perception or custom tools enabled for the session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<LlmTool>>,
+    /// Mode for tool calling (auto, required, none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<ToolCallingMode>,
+    /// Maximum allowed tool call iterations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tool_calls: Option<u32>,
     /// Optional system prompt to set model behavior for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -1046,6 +1168,38 @@ impl LlmSessionOptions {
     /// Create default session options.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Set the model target (e.g., "system", "private-cloud-compute").
+    pub fn model_target(mut self, model_target: impl Into<String>) -> Self {
+        self.model_target = Some(model_target.into());
+        self
+    }
+
+    /// Set tools available for this session.
+    pub fn tools(mut self, tools: Vec<LlmTool>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Add a single tool for this session.
+    pub fn with_tool(mut self, tool: LlmTool) -> Self {
+        let mut tools = self.tools.unwrap_or_default();
+        tools.push(tool);
+        self.tools = Some(tools);
+        self
+    }
+
+    /// Set the tool calling mode.
+    pub fn tool_choice(mut self, mode: ToolCallingMode) -> Self {
+        self.tool_choice = Some(mode);
+        self
+    }
+
+    /// Set the maximum number of tool calls allowed.
+    pub fn max_tool_calls(mut self, max: u32) -> Self {
+        self.max_tool_calls = Some(max);
+        self
     }
 
     /// Set the optional system prompt.
@@ -1619,6 +1773,9 @@ mod tests {
             images: None,
             response_schema: None,
             model_target: None,
+            tools: None,
+            tool_choice: None,
+            max_tool_calls: None,
             system_prompt: Some("Be helpful".to_string()),
             temperature: Some(0.7),
             max_tokens: Some(512),
@@ -1672,6 +1829,7 @@ mod tests {
             content: "Generated text".to_string(),
             model: "apple-foundation-model".to_string(),
             finish_reason: LlmFinishReason::Stop,
+            tool_calls: vec![],
             usage: Some(LlmUsage {
                 prompt_tokens: Some(10),
                 completion_tokens: Some(20),
@@ -1772,6 +1930,7 @@ mod tests {
                 rewrite: true,
                 multimodal: true,
                 structured_output: true,
+                tool_calling: true,
             },
             available_targets: vec![
                 LlmModelTargetInfo {
@@ -1849,5 +2008,35 @@ mod tests {
         assert!(deserialized.images.is_some());
         assert_eq!(deserialized.images.as_ref().unwrap().len(), 1);
         assert_eq!(deserialized.response_schema, Some(schema));
+    }
+    #[test]
+    fn test_llm_tools_and_tool_calls_serialization() {
+        let opts = LlmGenerateOptions::new("Inspect this image")
+            .with_tool(LlmTool::ocr())
+            .with_tool(LlmTool::barcode())
+            .tool_choice(ToolCallingMode::Auto)
+            .max_tool_calls(3);
+
+        let json = serde_json::to_string(&opts).unwrap();
+        assert!(json.contains("\"tools\":["));
+        assert!(json.contains("\"type\":\"ocr\""));
+        assert!(json.contains("\"type\":\"barcode\""));
+        assert!(json.contains("\"toolChoice\":\"auto\""));
+        assert!(json.contains("\"maxToolCalls\":3"));
+
+        let tool_call = LlmToolCall {
+            id: "call_123".to_string(),
+            name: "ocr".to_string(),
+            arguments: serde_json::json!({ "imageIndex": 0 }),
+        };
+        let tc_json = serde_json::to_string(&tool_call).unwrap();
+        assert!(tc_json.contains("\"id\":\"call_123\""));
+        assert!(tc_json.contains("\"name\":\"ocr\""));
+
+        let stream_event = LlmStreamEvent::ToolCall {
+            tool_call: tool_call.clone(),
+        };
+        let se_json = serde_json::to_string(&stream_event).unwrap();
+        assert!(se_json.contains("\"type\":\"toolCall\""));
     }
 }

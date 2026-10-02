@@ -30,6 +30,7 @@ export type DeviceAiErrorCode =
   | "LLM_SESSION_NOT_FOUND"
   | "LLM_CONTENT_FILTERED"
   | "LLM_CONTEXT_EXCEEDED"
+  | "LLM_TOOL_EXECUTION_FAILED"
   | "UNKNOWN";
 
 /**
@@ -50,6 +51,8 @@ export interface DeviceAiErrorDetails {
   modelType?: string;
   /** The session identifier that was invalid or not found. */
   sessionId?: string;
+  /** The tool name that failed execution. */
+  toolName?: string;
   /** The technical reason for failure or unavailability. */
   reason?: string;
   /** The expected format or parameter. */
@@ -182,4 +185,11 @@ export function isNoSpeechDetected(error: unknown): boolean {
  */
 export function isLlmContextExceeded(error: unknown): boolean {
   return normalizeDeviceAiError(error).code === "LLM_CONTEXT_EXCEEDED";
+}
+
+/**
+ * Check if language model tool execution failed based on the error.
+ */
+export function isLlmToolExecutionFailed(error: unknown): boolean {
+  return normalizeDeviceAiError(error).code === "LLM_TOOL_EXECUTION_FAILED";
 }

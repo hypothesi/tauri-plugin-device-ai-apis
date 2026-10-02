@@ -456,6 +456,8 @@ export interface LlmModelCapabilities {
   multimodal: boolean;
   /** Whether schema-constrained structured output is supported. */
   structuredOutput: boolean;
+  /** Whether perception and system tool calling is supported. */
+  toolCalling: boolean;
 }
 
 /**
@@ -493,6 +495,37 @@ export interface LlmModelInfo {
 }
 
 /**
+ * Mode for tool calling during language model generation.
+ */
+export type ToolCallingMode = "auto" | "required" | "none";
+
+/**
+ * A tool available to the language model (e.g. system perception tools or custom functions).
+ */
+export interface LlmTool {
+  /** Tool type: "ocr", "barcode", or "custom". */
+  type: "ocr" | "barcode" | "custom" | string;
+  /** Optional tool name. */
+  name?: string;
+  /** Optional description of what the tool does. */
+  description?: string;
+  /** Optional JSON schema for tool parameters. */
+  parameters?: Record<string, unknown>;
+}
+
+/**
+ * A tool call executed or initiated by the language model.
+ */
+export interface LlmToolCall {
+  /** Unique identifier for this tool call. */
+  id: string;
+  /** Name of the tool called. */
+  name: string;
+  /** Arguments provided to the tool. */
+  arguments: Record<string, unknown>;
+}
+
+/**
  * Options for text generation.
  */
 export interface LlmGenerateOptions {
@@ -504,6 +537,12 @@ export interface LlmGenerateOptions {
   responseSchema?: Record<string, unknown> | string;
   /** Optional model target architecture (e.g. "system", "private-cloud-compute"). */
   modelTarget?: "system" | "private-cloud-compute" | string;
+  /** Optional tools available to the model. */
+  tools?: LlmTool[];
+  /** Tool calling mode (auto, required, none). */
+  toolChoice?: ToolCallingMode;
+  /** Maximum number of tool calls allowed. */
+  maxToolCalls?: number;
   /** Optional system prompt to guide the model's behavior. */
   systemPrompt?: string;
   /** Sampling temperature (0.0 to 2.0). */
@@ -545,6 +584,8 @@ export interface LlmGenerateResult {
   model: string;
   /** Reason the generation finished. */
   finishReason: LlmFinishReason;
+  /** Tool calls performed during generation, if any. */
+  toolCalls?: LlmToolCall[];
   /** Token usage statistics, if available. */
   usage?: LlmUsage;
 }
@@ -554,6 +595,7 @@ export interface LlmGenerateResult {
  */
 export type LlmStreamEvent =
   | { type: "delta"; content: string }
+  | { type: "toolCall"; toolCall: LlmToolCall }
   | { type: "done"; content: string; finishReason: LlmFinishReason; usage?: LlmUsage }
   | { type: "error"; message: string };
 
@@ -563,6 +605,12 @@ export type LlmStreamEvent =
 export interface LlmSessionOptions {
   /** Optional model target architecture (e.g. "system", "private-cloud-compute"). */
   modelTarget?: "system" | "private-cloud-compute" | string;
+  /** Optional tools available for this session. */
+  tools?: LlmTool[];
+  /** Tool calling mode (auto, required, none). */
+  toolChoice?: ToolCallingMode;
+  /** Maximum number of tool calls allowed. */
+  maxToolCalls?: number;
   /** Optional system prompt for the session. */
   systemPrompt?: string;
   /** Default temperature for the session. */

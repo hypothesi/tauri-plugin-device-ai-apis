@@ -178,11 +178,21 @@ class TextTranslateArgs: Decodable {
 
 // LLM argument types
 
+class ToolArgs: Decodable {
+    let type: String
+    let name: String?
+    let description: String?
+    let parameters: AnyCodableDTO?
+}
+
 class LlmGenerateOptionsInner: Decodable {
     let prompt: String
     let images: [ImageSourceArgs]?
     let responseSchema: AnyCodableDTO?
     let modelTarget: String?
+    let tools: [ToolArgs]?
+    let toolChoice: String?
+    let maxToolCalls: Int?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -197,6 +207,9 @@ class LlmGenerateArgs: Decodable {
 
 class LlmSessionOptionsInner: Decodable {
     let modelTarget: String?
+    let tools: [ToolArgs]?
+    let toolChoice: String?
+    let maxToolCalls: Int?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -1239,6 +1252,35 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
 """
     }
 
+    private func executeOCR(from source: ImageSourceArgs) -> String {
+        guard let cgImage = loadImage(from: source) else { return "" }
+        let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        do {
+            try requestHandler.perform([request])
+            let observations = request.results as? [VNRecognizedTextObservation] ?? []
+            let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+            return lines.joined(separator: "\n")
+        } catch {
+            return ""
+        }
+    }
+
+    private func executeBarcode(from source: ImageSourceArgs) -> String {
+        guard let cgImage = loadImage(from: source) else { return "" }
+        let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        let request = VNDetectBarcodesRequest()
+        do {
+            try requestHandler.perform([request])
+            let observations = request.results as? [VNBarcodeObservation] ?? []
+            let payloads = observations.compactMap { $0.payloadStringValue }
+            return payloads.joined(separator: ", ")
+        } catch {
+            return ""
+        }
+    }
+
     private func loadImage(from source: ImageSourceArgs) -> CGImage? {
         if let base64 = source.base64 {
             guard let data = Data(base64Encoded: base64),
@@ -1510,6 +1552,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                     "rewrite": true,
                     "multimodal": true,
                     "structuredOutput": true,
+                    "toolCalling": true,
                 ] as [String: Any],
                 "availableTargets": [
                     [
@@ -1558,8 +1601,43 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                         genOpts.maximumResponseTokens = maxTokens
                     }
 
+                    var toolCalls: [[String: Any]] = []
+                    var augmentedPrompt = args.options.prompt
+                    if let tools = args.options.tools, args.options.toolChoice != "none" {
+                        for tool in tools {
+                            let toolName = (tool.name ?? tool.type).lowercased()
+                            if toolName == "ocr" || toolName == "perception.ocr" || tool.type == "ocr" {
+                                if let images = args.options.images, !images.isEmpty {
+                                    for (idx, img) in images.enumerated() {
+                                        let text = self.executeOCR(from: img)
+                                        let callId = "call_\(UUID().uuidString.prefix(8))"
+                                        toolCalls.append([
+                                            "id": callId,
+                                            "name": "ocr",
+                                            "arguments": ["imageIndex": idx]
+                                        ])
+                                        augmentedPrompt += "\n\n[Perception Tool: OCR Result for image \(idx)]\n\(text)"
+                                    }
+                                }
+                            } else if toolName == "barcode" || toolName == "perception.barcode" || tool.type == "barcode" {
+                                if let images = args.options.images, !images.isEmpty {
+                                    for (idx, img) in images.enumerated() {
+                                        let codes = self.executeBarcode(from: img)
+                                        let callId = "call_\(UUID().uuidString.prefix(8))"
+                                        toolCalls.append([
+                                            "id": callId,
+                                            "name": "barcode",
+                                            "arguments": ["imageIndex": idx]
+                                        ])
+                                        augmentedPrompt += "\n\n[Perception Tool: Barcode Result for image \(idx)]\n\(codes)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let promptText = self.preparePromptWithSchema(
-                        prompt: args.options.prompt,
+                        prompt: augmentedPrompt,
                         schemaString: args.options.responseSchema?.rawJSON
                     )
                     let _ = args.options.images?.compactMap { self.makeImageSegment(from: $0) }
@@ -1574,6 +1652,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
                         "content": content,
                         "model": "apple-foundation-model",
                         "finishReason": "stop",
+                        "toolCalls": toolCalls,
                     ] as [String: Any])
                 } catch {
                     invoke.reject(mapLlmError(error))

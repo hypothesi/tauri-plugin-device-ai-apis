@@ -635,6 +635,7 @@ impl Llm<'_> {
     ///             match event {
     ///                 LlmStreamEvent::Delta { content } => print!("{}", content),
     ///                 LlmStreamEvent::Done { .. } => println!(),
+    ///                 LlmStreamEvent::ToolCall { .. } => {}
     ///                 LlmStreamEvent::Error { message } => eprintln!("error: {}", message),
     ///             }
     ///             Ok(())

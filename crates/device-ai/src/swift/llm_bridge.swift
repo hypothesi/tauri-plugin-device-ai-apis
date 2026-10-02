@@ -8,6 +8,8 @@
 #if canImport(FoundationModels)
 import Foundation
 import FoundationModels
+import Vision
+import AppKit
 
 // MARK: - Multimodal Extension for FoundationModels
 
@@ -72,6 +74,62 @@ private struct ImageSourceDTO: Decodable {
     let base64: String?
     let bytes: [UInt8]?
     let filePath: String?
+}
+
+private func getImageData(from dto: ImageSourceDTO) -> Data? {
+    if let base64 = dto.base64 {
+        let cleaned: String
+        if base64.starts(with: "data:") {
+            if let commaIndex = base64.firstIndex(of: ",") {
+                cleaned = String(base64[base64.index(after: commaIndex)...])
+            } else {
+                cleaned = base64
+            }
+        } else {
+            cleaned = base64
+        }
+        return Data(base64Encoded: cleaned)
+    } else if let bytes = dto.bytes {
+        return Data(bytes)
+    } else if let filePath = dto.filePath {
+        return try? Data(contentsOf: URL(fileURLWithPath: filePath))
+    }
+    return nil
+}
+
+private func executeOCR(on data: Data) -> String {
+    guard let image = NSImage(data: data),
+          let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        return ""
+    }
+    let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    do {
+        try requestHandler.perform([request])
+        let observations = request.results as? [VNRecognizedTextObservation] ?? []
+        let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+        return lines.joined(separator: "\n")
+    } catch {
+        return ""
+    }
+}
+
+private func executeBarcode(on data: Data) -> String {
+    guard let image = NSImage(data: data),
+          let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        return ""
+    }
+    let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    let request = VNDetectBarcodesRequest()
+    do {
+        try requestHandler.perform([request])
+        let observations = request.results as? [VNBarcodeObservation] ?? []
+        let payloads = observations.compactMap { $0.payloadStringValue }
+        return payloads.joined(separator: ", ")
+    } catch {
+        return ""
+    }
 }
 
 private func makeImageSegment(from dto: ImageSourceDTO) -> Transcript.ImageSegment? {
@@ -253,11 +311,35 @@ private func runBlocking<T>(_ body: @escaping @Sendable () async throws -> T) th
 
 // MARK: - JSON DTOs (matching Rust camelCase serde)
 
+private struct ToolDTO: Decodable {
+    let type: String
+    let name: String?
+    let description: String?
+    let parameters: AnyCodableDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case type, name, description, parameters
+    }
+}
+
+private struct ToolCallDTO: Encodable {
+    let id: String
+    let name: String
+    let arguments: [String: String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, arguments
+    }
+}
+
 private struct GenerateOptionsDTO: Decodable {
     let prompt: String
     let images: [ImageSourceDTO]?
     let responseSchema: AnyCodableDTO?
     let modelTarget: String?
+    let tools: [ToolDTO]?
+    let toolChoice: String?
+    let maxToolCalls: Int?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
@@ -266,18 +348,21 @@ private struct GenerateOptionsDTO: Decodable {
     let seed: UInt64?
 
     enum CodingKeys: String, CodingKey {
-        case prompt, images, responseSchema, modelTarget, systemPrompt, temperature, maxTokens, topP, topK, seed
+        case prompt, images, responseSchema, modelTarget, tools, toolChoice, maxToolCalls, systemPrompt, temperature, maxTokens, topP, topK, seed
     }
 }
 
 private struct SessionOptionsDTO: Decodable {
     let modelTarget: String?
+    let tools: [ToolDTO]?
+    let toolChoice: String?
+    let maxToolCalls: Int?
     let systemPrompt: String?
     let temperature: Double?
     let maxTokens: Int?
 
     enum CodingKeys: String, CodingKey {
-        case modelTarget, systemPrompt, temperature, maxTokens
+        case modelTarget, tools, toolChoice, maxToolCalls, systemPrompt, temperature, maxTokens
     }
 }
 
@@ -285,10 +370,11 @@ private struct GenerateResultDTO: Encodable {
     let content: String
     let model: String
     let finishReason: String
+    let toolCalls: [ToolCallDTO]
     let usage: UsageDTO?
 
     enum CodingKeys: String, CodingKey {
-        case content, model, finishReason, usage
+        case content, model, finishReason, toolCalls, usage
     }
 }
 
@@ -344,11 +430,22 @@ private struct ModelCapabilitiesDTO: Encodable {
     let rewrite: Bool
     let multimodal: Bool
     let structuredOutput: Bool
+    let toolCalling: Bool
 
     enum CodingKeys: String, CodingKey {
         case streaming, systemPrompts, temperatureControl, maxTokensControl
         case seedSupport, topPSupport, topKSupport, summarize, rewrite
-        case multimodal, structuredOutput
+        case multimodal, structuredOutput, toolCalling
+    }
+}
+
+private struct StreamToolCallDTO: Encodable {
+    let type_ = "toolCall"
+    let toolCall: ToolCallDTO
+
+    enum CodingKeys: String, CodingKey {
+        case type_ = "type"
+        case toolCall
     }
 }
 
@@ -448,7 +545,8 @@ public func getModelInfo() -> UnsafeMutablePointer<CChar>? {
             summarize: true,
             rewrite: true,
             multimodal: true,
-            structuredOutput: true
+            structuredOutput: true,
+            toolCalling: true
         ),
         availableTargets: targets
     )
@@ -463,13 +561,53 @@ public func generate(_ optionsJSON: UnsafePointer<CChar>) -> UnsafeMutablePointe
         return errorCString("Failed to parse generate options")
     }
 
+    var toolCalls: [ToolCallDTO] = []
+    var augmentedPrompt = opts.prompt
+    if let tools = opts.tools, opts.toolChoice != "none" {
+        for tool in tools {
+            let toolName = (tool.name ?? tool.type).lowercased()
+            if toolName == "ocr" || toolName == "perception.ocr" || tool.type == "ocr" {
+                if let images = opts.images, !images.isEmpty {
+                    for (idx, img) in images.enumerated() {
+                        if let data = getImageData(from: img) {
+                            let text = executeOCR(on: data)
+                            let callId = "call_\(UUID().uuidString.prefix(8))"
+                            toolCalls.append(ToolCallDTO(
+                                id: callId,
+                                name: "ocr",
+                                arguments: ["imageIndex": String(idx)]
+                            ))
+                            augmentedPrompt += "\n\n[Perception Tool: OCR Result for image \(idx)]\n\(text)"
+                        }
+                    }
+                }
+            } else if toolName == "barcode" || toolName == "perception.barcode" || tool.type == "barcode" {
+                if let images = opts.images, !images.isEmpty {
+                    for (idx, img) in images.enumerated() {
+                        if let data = getImageData(from: img) {
+                            let codes = executeBarcode(on: data)
+                            let callId = "call_\(UUID().uuidString.prefix(8))"
+                            toolCalls.append(ToolCallDTO(
+                                id: callId,
+                                name: "barcode",
+                                arguments: ["imageIndex": String(idx)]
+                            ))
+                            augmentedPrompt += "\n\n[Perception Tool: Barcode Result for image \(idx)]\n\(codes)"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     do {
         let content: String = try runBlocking {
             let session = makeSession(
                 systemPrompt: opts.systemPrompt,
                 temperature: opts.temperature,
                 maxTokens: opts.maxTokens,
-                seed: opts.seed
+                seed: opts.seed,
+                modelTarget: opts.modelTarget
             )
             let genOpts = makeGenerationOptions(
                 temperature: opts.temperature,
@@ -477,7 +615,7 @@ public func generate(_ optionsJSON: UnsafePointer<CChar>) -> UnsafeMutablePointe
                 seed: opts.seed
             )
             let promptText = preparePromptWithSchema(
-                prompt: opts.prompt,
+                prompt: augmentedPrompt,
                 schemaString: opts.responseSchema?.rawJSON
             )
             let _ = opts.images?.compactMap { makeImageSegment(from: $0) }
@@ -492,6 +630,7 @@ public func generate(_ optionsJSON: UnsafePointer<CChar>) -> UnsafeMutablePointe
             content: content,
             model: "apple-foundation-model",
             finishReason: "stop",
+            toolCalls: toolCalls,
             usage: nil
         )
         return jsonCString(result)
@@ -528,8 +667,50 @@ public func generateStream(
                 maxTokens: opts.maxTokens,
                 seed: opts.seed
             )
+            var toolCalls: [ToolCallDTO] = []
+            var augmentedPrompt = opts.prompt
+            if let tools = opts.tools, opts.toolChoice != "none" {
+                for tool in tools {
+                    let toolName = (tool.name ?? tool.type).lowercased()
+                    if toolName == "ocr" || toolName == "perception.ocr" || tool.type == "ocr" {
+                        if let images = opts.images, !images.isEmpty {
+                            for (idx, img) in images.enumerated() {
+                                if let data = getImageData(from: img) {
+                                    let text = executeOCR(on: data)
+                                    let callId = "call_\(UUID().uuidString.prefix(8))"
+                                    let tc = ToolCallDTO(id: callId, name: "ocr", arguments: ["imageIndex": String(idx)])
+                                    toolCalls.append(tc)
+                                    let stc = StreamToolCallDTO(toolCall: tc)
+                                    if let stcJSON = jsonCString(stc) {
+                                        callback(context, stcJSON)
+                                        free(stcJSON)
+                                    }
+                                    augmentedPrompt += "\n\n[Perception Tool: OCR Result for image \(idx)]\n\(text)"
+                                }
+                            }
+                        }
+                    } else if toolName == "barcode" || toolName == "perception.barcode" || tool.type == "barcode" {
+                        if let images = opts.images, !images.isEmpty {
+                            for (idx, img) in images.enumerated() {
+                                if let data = getImageData(from: img) {
+                                    let codes = executeBarcode(on: data)
+                                    let callId = "call_\(UUID().uuidString.prefix(8))"
+                                    let tc = ToolCallDTO(id: callId, name: "barcode", arguments: ["imageIndex": String(idx)])
+                                    toolCalls.append(tc)
+                                    let stc = StreamToolCallDTO(toolCall: tc)
+                                    if let stcJSON = jsonCString(stc) {
+                                        callback(context, stcJSON)
+                                        free(stcJSON)
+                                    }
+                                    augmentedPrompt += "\n\n[Perception Tool: Barcode Result for image \(idx)]\n\(codes)"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             let promptText = preparePromptWithSchema(
-                prompt: opts.prompt,
+                prompt: augmentedPrompt,
                 schemaString: opts.responseSchema?.rawJSON
             )
             let _ = opts.images?.compactMap { makeImageSegment(from: $0) }
@@ -621,6 +802,7 @@ public func sessionSend(
             content: content,
             model: "apple-foundation-model",
             finishReason: "stop",
+            toolCalls: [],
             usage: nil
         )
         return jsonCString(result)

@@ -72,6 +72,9 @@ pub enum Error {
     #[error("Language model context window exceeded: {message}")]
     LlmContextExceeded { message: String },
 
+    #[error("Language model tool execution failed: {tool_name} - {message}")]
+    LlmToolExecutionFailed { tool_name: String, message: String },
+
     // General input / platform errors
     #[error("Invalid argument: {message}")]
     InvalidArgument { message: String },
@@ -106,6 +109,7 @@ impl Error {
             Error::LlmSessionNotFound { .. } => "LLM_SESSION_NOT_FOUND",
             Error::LlmContentFiltered { .. } => "LLM_CONTENT_FILTERED",
             Error::LlmContextExceeded { .. } => "LLM_CONTEXT_EXCEEDED",
+            Error::LlmToolExecutionFailed { .. } => "LLM_TOOL_EXECUTION_FAILED",
             Error::InvalidArgument { .. } => "INVALID_ARGUMENTS",
             Error::Platform(_) => "PLATFORM_ERROR",
             Error::Io(_) => "IO_ERROR",
@@ -159,6 +163,11 @@ impl Error {
                 reason: Some(message.clone()),
                 ..Default::default()
             }),
+            Error::LlmToolExecutionFailed { tool_name, message } => Some(ErrorDetails {
+                tool_name: Some(tool_name.clone()),
+                reason: Some(message.clone()),
+                ..Default::default()
+            }),
             _ => None,
         }
     }
@@ -182,6 +191,8 @@ pub struct ErrorDetails {
     pub target_language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -342,6 +353,11 @@ mod tests {
                 message: "test".to_string(),
             }
             .code(),
+            Error::LlmToolExecutionFailed {
+                tool_name: "test".to_string(),
+                message: "test".to_string(),
+            }
+            .code(),
             Error::InvalidArgument {
                 message: "test".to_string(),
             }
@@ -482,6 +498,14 @@ mod tests {
             }
             .to_string(),
             "Language model context window exceeded: prompt exceeds 4096 tokens"
+        );
+        assert_eq!(
+            Error::LlmToolExecutionFailed {
+                tool_name: "ocr".to_string(),
+                message: "image unreadable".to_string(),
+            }
+            .to_string(),
+            "Language model tool execution failed: ocr - image unreadable"
         );
         assert_eq!(
             Error::Platform("test".to_string()).to_string(),

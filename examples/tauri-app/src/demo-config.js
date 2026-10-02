@@ -58,4 +58,5 @@ export const llmCapabilityLabels = Object.freeze([
   { key: "rewrite", label: "Rewrite" },
   { key: "multimodal", label: "Multimodal (vision)" },
   { key: "structuredOutput", label: "Structured JSON" },
+  { key: "toolCalling", label: "Perception tools" },
 ]);
