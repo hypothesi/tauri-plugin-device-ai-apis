@@ -32,10 +32,10 @@ Before tagging a release, keep these version fields aligned:
    ```
 
 2. Update the release version in the repository before tagging:
-   - `package.json`
-   - `Cargo.toml`
-   - `crates/device-ai/Cargo.toml`
-   - the `device-ai` dependency version in `Cargo.toml`
+   * `package.json`
+   * `Cargo.toml`
+   * `crates/device-ai/Cargo.toml`
+   * the `device-ai` dependency version in `Cargo.toml`
 
 3. Run the release validation and normal quality gates:
 
@@ -78,6 +78,25 @@ Before tagging a release, keep these version fields aligned:
 8. A GitHub release is created only after publish succeeds.
 
 If any check fails, publish is skipped and the workflow fails.
+
+Each publish step skips a version that is already on its registry, so a workflow that fails
+part way through can be rerun without hand-editing the release. Trusted Publishing needs npm
+11.5.1 or newer to exchange the Actions OIDC token for a registry token, so the publish job
+installs a pinned npm rather than relying on the one the runner's Node bundles.
+
+## Recovering from a partial release
+
+If the workflow published some artifacts and then failed, fix the cause on `main`, then move
+the tag onto the fix and push it again:
+
+```bash
+git tag -d vX.Y.Z
+git push origin :refs/tags/vX.Y.Z
+git tag -s vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The rerun republishes only what is still missing.
 
 The plugin crate preflight uses `cargo package --list` because the plugin depends on
 `device-ai`, and that dependency is not available from crates.io until the release job has

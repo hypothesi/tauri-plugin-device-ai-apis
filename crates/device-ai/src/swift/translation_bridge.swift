@@ -70,7 +70,9 @@ public func swift_translation_check_availability(
         }
         semaphore.signal()
     }
-    semaphore.wait()
+    if semaphore.wait(timeout: .now() + 5) == .timedOut {
+        return 2
+    }
     return result
 }
 
@@ -176,7 +178,7 @@ public func swift_translation_translate(
         semaphore.signal()
     }
 
-    semaphore.wait()
+    _ = semaphore.wait(timeout: .now() + 30)
     return responseJSON ?? errorCString("Translation timed out or failed to produce a response")
 }
 

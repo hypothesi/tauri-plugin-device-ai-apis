@@ -5,7 +5,20 @@ authors = ["Hypothesi"]
 description = "A Tauri plugin for cross-platform device AI capabilities including speech, vision, and text processing"
 edition = "2021"
 rust-version = "1.77.2"
-exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
+exclude = [
+   "/.beads",
+   "/.github",
+   "/.husky",
+   "/android/.gradle",
+   "/dist-js",
+   "/examples",
+   "/guest-js",
+   "/node_modules",
+   "/AGENTS.md",
+   "/CLAUDE.md",
+   "/ai.json",
+   "/workflows-README.md",
+]
 links = "tauri-plugin-device-ai-apis"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/hypothesi/tauri-plugin-device-ai-apis"
