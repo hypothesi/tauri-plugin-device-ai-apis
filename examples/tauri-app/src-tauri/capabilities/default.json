@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": ["main"],
-  "permissions": ["core:default", "device-ai-apis:all"]
+  "permissions": ["core:default", "device-ai-apis:all", "mcp-bridge:default"]
 }

@@ -29,5 +29,15 @@ fn main() {
 
         // Also add /usr/lib/swift as fallback rpath
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+
+        // Embed Info.plist into __TEXT,__info_plist for macOS TCC privacy checks (e.g. Speech recognition)
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        let info_plist = std::path::Path::new(&manifest_dir).join("Info.plist");
+        if info_plist.exists() {
+            println!(
+                "cargo:rustc-link-arg=-Wl,-sectcreate,__TEXT,__info_plist,{}",
+                info_plist.display()
+            );
+        }
     }
 }

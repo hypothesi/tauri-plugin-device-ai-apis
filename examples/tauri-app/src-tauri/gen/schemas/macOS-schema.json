@@ -2229,10 +2229,10 @@
           "markdownDescription": "Full speech synthesis capabilities\n#### This permission set includes:\n\n- `allow-speech-synthesize`\n- `allow-speech-get-voices`"
         },
         {
-          "description": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-translate`",
+          "description": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-check-translation-availability`\n- `allow-text-translate`",
           "type": "string",
           "const": "device-ai-apis:text-all",
-          "markdownDescription": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-translate`"
+          "markdownDescription": "Full text processing capabilities\n#### This permission set includes:\n\n- `allow-text-identify-language`\n- `allow-text-check-translation-availability`\n- `allow-text-translate`"
         },
         {
           "description": "Full vision capabilities\n#### This permission set includes:\n\n- `allow-vision-recognize-text`\n- `allow-vision-detect-barcodes`\n- `allow-vision-detect-faces`\n- `allow-vision-classify-image`",
@@ -2335,6 +2335,12 @@
           "type": "string",
           "const": "device-ai-apis:allow-speech-synthesize",
           "markdownDescription": "Enables text-to-speech synthesis"
+        },
+        {
+          "description": "Enables checking on-device translation availability between languages",
+          "type": "string",
+          "const": "device-ai-apis:allow-text-check-translation-availability",
+          "markdownDescription": "Enables checking on-device translation availability between languages"
         },
         {
           "description": "Enables language identification of text",
