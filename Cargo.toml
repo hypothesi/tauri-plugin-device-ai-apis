@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-device-ai-apis"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Hypothesi"]
 description = "A Tauri plugin for cross-platform device AI capabilities including speech, vision, and text processing"
 edition = "2021"
@@ -20,7 +20,7 @@ exclude = [
    "/workflows-README.md",
 ]
 links = "tauri-plugin-device-ai-apis"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/hypothesi/tauri-plugin-device-ai-apis"
 keywords = ["tauri", "plugin", "ai", "speech", "vision"]
 categories = ["api-bindings", "multimedia"]

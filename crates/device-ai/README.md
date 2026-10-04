@@ -1,17 +1,20 @@
 # device-ai
 
-Cross-platform access to native, on-device AI APIs for Rust.
+`device-ai` is a Rust crate for calling the AI APIs built into macOS and Windows. Use it
+in a desktop Rust application when you need OCR, speech, image analysis, language
+identification, or local language-model APIs.
 
-`device-ai` provides a high-level, idiomatic Rust interface to platform-native AI capabilities on macOS and Windows. By leveraging the APIs already built into the operating system (like Apple's Vision and Speech frameworks or Windows Media and ML APIs), you can add powerful AI features to your applications without the overhead of heavy models or external cloud dependencies.
+The operating system and device decide what is available. Check capabilities before
+showing a feature or calling its API.
 
-## Key Features
+## Requirements
 
 - **Vision:** OCR (text recognition), barcode detection, face detection, and image classification.
 - **Speech:** Speech recognition (speech-to-text) and speech synthesis (text-to-speech).
 - **Text:** Language identification and translation.
 - **LLM:** On-device language model generation, summarization, and rewriting.
 
-## Platform Support
+On Linux and other unsupported targets, API calls return `Error::FeatureNotAvailable`.
 
 | Feature | macOS | Windows  | Linux |
 | ------- | ----- | -------- | ----- |
@@ -32,34 +35,40 @@ Add `device-ai` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-device-ai = { git = "https://github.com/hypothesi/tauri-plugin-device-ai-apis" }
+device-ai = "0.1.1"
 ```
+
+## Start with a capability check
+
+Create one `DeviceAi` value, inspect the capability you need, then make the call. This
+keeps platform-specific decisions in one place.
 
 ```rust
 use device_ai::{DeviceAi, ImageSource, OcrOptions};
 
 fn main() -> device_ai::Result<()> {
-   let ai = DeviceAi::new();
+    let ai = DeviceAi::new();
 
-   // Check what's available on this platform
-   let caps = ai.capabilities();
-   println!("speech recognition: {}", caps.speech_recognition.available);
-   println!("OCR: {}", caps.text_recognition.available);
+    if !ai.capabilities().text_recognition.available {
+        eprintln!("OCR is unavailable on this device.");
+        return Ok(());
+    }
 
-   // Run OCR on an image
-   let result = ai.vision().recognize_text(
-      ImageSource::from_path("receipt.png"),
-      OcrOptions::new(),
-   )?;
+    let result = ai.vision().recognize_text(
+        ImageSource::from_path("receipt.png"),
+        OcrOptions::new().with_language("en-US"),
+    )?;
 
-   println!("recognized: {}", result.text);
-   Ok(())
+    println!("{}", result.text);
+    Ok(())
 }
 ```
 
-## Feature Flags
+`ImageSource` accepts file paths, image bytes, and base64-encoded data. OCR results
+include the complete text plus blocks, lines, confidence values when the platform
+provides them, and normalized bounding boxes.
 
-Enable or disable individual capabilities to minimize dependencies and binary size:
+## APIs and platform support
 
 | Feature  | Description                                                  | Default |
 | -------- | ------------------------------------------------------------ | ------- |
@@ -68,7 +77,8 @@ Enable or disable individual capabilities to minimize dependencies and binary si
 | `text`   | Language identification                                      | Yes     |
 | `llm`    | On-device language model                                     | Yes     |
 
-## Current Limitations
+The capability response also reports whether a feature runs on device and whether it
+requires permission. Treat it as the source of truth for the current machine.
 
 - **Streaming Speech:** Native streaming speech recognition is not yet implemented.
 - **Translation:** Currently returns `FEATURE_NOT_AVAILABLE`.
@@ -76,27 +86,25 @@ Enable or disable individual capabilities to minimize dependencies and binary si
 - **Windows LLM:** APIs are currently stubs awaiting Phi Silica bindings.
 - **Apple Intelligence:** LLM support requires macOS 15.1+ and the FoundationModels SDK.
 
-## Local Development & Verification
+Pass an `AudioSource` through `RecognitionOptions` for a file or the microphone. Use
+`voices()` before selecting a synthesis voice.
 
-You can test the library's capabilities on your machine using the bundled example CLI:
+```rust
+use device_ai::{AudioSource, DeviceAi, RecognitionOptions, SynthesisOptions};
 
-```bash
-# General
-cargo run -p device-ai --example device-ai -- capabilities
+fn recognize_file() -> device_ai::Result<()> {
+    let ai = DeviceAi::new();
+    let options = RecognitionOptions::new()
+        .with_audio_source(AudioSource::from_path("meeting.wav"));
+    let result = ai.speech().recognize(options)?;
 
-# Speech
-cargo run -p device-ai --example device-ai -- speech-voices
-cargo run -p device-ai --example device-ai -- speech-speak "Hello from device-ai"
-
-# Vision
-cargo run -p device-ai --example device-ai -- vision-ocr ./path/to/image.png
-cargo run -p device-ai --example device-ai -- vision-faces ./path/to/image.png
-
-# LLM
-cargo run -p device-ai --example device-ai -- llm-availability
-cargo run -p device-ai --example device-ai -- llm-generate "Explain Rust in one sentence."
+    println!("{}", result.text);
+    ai.speech().speak("Transcription complete.", SynthesisOptions::new())?;
+    Ok(())
+}
 ```
 
----
+Streaming speech recognition is not implemented. `start_recognition()` and
+`stop_recognition()` return an error; use `recognize()` for one-shot recognition.
 
 _This crate is maintained as part of the [tauri-plugin-device-ai-apis](https://github.com/hypothesi/tauri-plugin-device-ai-apis) project. It serves as the core Rust implementation for the Tauri plugin but can be used as a standalone library in any Rust project._

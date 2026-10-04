@@ -6,7 +6,7 @@ authors = ["you"]
 license = ""
 repository = ""
 edition = "2024"
-rust-version = "1.89.0"
+rust-version = "1.88.0"
 
 [workspace]
 
