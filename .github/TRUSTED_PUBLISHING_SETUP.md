@@ -6,12 +6,15 @@ Complete these steps once before the first signed-tag release.
 
 1. Open the npm package access page for `@hypothesi/tauri-plugin-device-ai-apis`.
 2. Add a Trusted Publisher with these values:
-   - Provider: `GitHub Actions`
-   - Owner or organization: `hypothesi`
-   - Repository: `tauri-plugin-device-ai-apis`
-   - Workflow file: `release.yml`
-   - Environment: leave blank
-3. If npm does not allow Trusted Publishing yet because the package has never been published,
+   * Provider: `GitHub Actions`
+   * Owner or organization: `hypothesi`
+   * Repository: `tauri-plugin-device-ai-apis`
+   * Workflow file: `release.yml`
+   * Environment: leave blank
+3. Keep the publish job on npm 11.5.1 or newer. Older npm releases cannot exchange the Actions
+   OIDC token for a registry token, and the publish then fails with a `404 Not Found` on the
+   `PUT` rather than an authorization error.
+4. If npm does not allow Trusted Publishing yet because the package has never been published,
    publish the package once from a maintainer account with:
 
    ```bash
@@ -26,8 +29,8 @@ Complete these steps once before the first signed-tag release.
 2. Add it to GitHub repository secrets as `CARGO_REGISTRY_TOKEN`.
 3. Before the first release, confirm both crate names are either still available or already
    owned by the publishing account:
-   - `device-ai`
-   - `tauri-plugin-device-ai-apis`
+   * `device-ai`
+   * `tauri-plugin-device-ai-apis`
 4. Confirm the publishing account is an owner of both crates once they exist.
 
 ## Verified signed tags

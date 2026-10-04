@@ -11,8 +11,8 @@ name: Build Platforms
 # - android-example: builds the example app's Android APK via the Tauri CLI,
 #   which compiles the Kotlin plugin (DeviceAiPlugin.kt) — the only gate that
 #   catches Kotlin compile errors (missed by every other job; see PR #5).
-# - ios-example: builds the example app for the iOS simulator via the Tauri
-#   CLI, which compiles the Swift plugin (DeviceAiPlugin.swift).
+# - ios-example: initializes Tauri's generated Swift dependency, builds the
+#   plugin package directly, then builds the example app for the simulator.
 
 on:
   push:
@@ -82,7 +82,7 @@ jobs:
     env:
       # NDK r26b — pinned exact version; referenced by both the sdkmanager
       # packages input and the NDK env derivation below (single source of truth).
-      NDK_VERSION: "26.1.10909125"
+      NDK_VERSION: '26.1.10909125'
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux system dependencies
@@ -104,14 +104,14 @@ jobs:
           key: android-example
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v4
         with:
-          packages: "tools platform-tools ndk;${{ env.NDK_VERSION }}"
+          packages: 'tools platform-tools ndk;${{ env.NDK_VERSION }}'
       - name: Configure NDK environment
         # setup-android@v4 exports ANDROID_SDK_ROOT but NOT NDK_HOME /
         # ANDROID_NDK_ROOT; the NDK installs under
@@ -139,8 +139,8 @@ jobs:
           npm ci
           # The example ships no gen/android project (it is generated locally);
           # generate it on the fly. Init is idempotent when gen already exists.
-          npx tauri android init
-          npx tauri android build --apk --debug --target aarch64
+          npx -y tauri android init
+          npx -y tauri android build --apk --debug --target aarch64
 
   ios-example:
     name: iOS example (Swift plugin)
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios-sim
@@ -170,10 +170,23 @@ jobs:
           npm ci
           # The example ships no gen/apple project (it is generated locally);
           # generate it on the fly. Init is idempotent when gen already exists.
-          npx tauri ios init
+          npx -y tauri ios init
           # tauri CLI --target values are aarch64 | aarch64-sim | x86_64
           # (NOT cargo triplets); aarch64-sim = Apple Silicon simulator.
-          npx tauri ios build --target aarch64-sim
+          npx -y tauri ios build --target aarch64-sim
+          # Build the plugin package directly. The app build compiles the Rust
+          # mobile bridge but does not guarantee that SwiftPM compiled the
+          # plugin's Swift source. This has to follow the app build: `ios/
+          # Package.swift` depends on ../.tauri/tauri-api, which the app build
+          # generates and `tauri ios init` does not.
+          (
+            cd ../../ios
+            xcodebuild \
+              -scheme tauri-plugin-device-ai-apis \
+              -destination 'generic/platform=iOS Simulator' \
+              -sdk iphonesimulator \
+              build
+          )
         # Simulator builds need no signing identity or provisioning profile;
         # `xcodebuild ... CODE_SIGNING_ALLOWED=NO` is applied by tauri-cli
         # for simulator destinations.

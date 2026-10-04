@@ -1,6 +1,6 @@
 {
   "name": "@hypothesi/tauri-plugin-device-ai-apis",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tauri plugin for on-device AI APIs: speech recognition, text-to-speech, OCR, barcode detection, face detection, image classification, and language identification.",
   "author": "Hypothesi",
   "license": "MIT",
@@ -13,18 +13,20 @@
     "url": "https://github.com/hypothesi/tauri-plugin-device-ai-apis/issues"
   },
   "keywords": [
+    "tauri",
+    "tauri-plugin",
+    "tauri-v2",
     "ai",
+    "on-device-ai",
+    "speech-recognition",
+    "text-to-speech",
+    "ocr",
     "barcode-detection",
     "face-detection",
     "image-classification",
     "language-identification",
-    "ocr",
-    "on-device-ai",
-    "speech-recognition",
-    "tauri",
-    "tauri-plugin",
-    "tauri-v2",
-    "text-to-speech"
+    "llm",
+    "translation"
   ],
   "files": [
     "dist-js",
@@ -53,7 +55,7 @@
   "dependencies": {},
   "devDependencies": {
     "@rollup/plugin-typescript": "^12.0.0",
-    "@tauri-apps/api": "2.11.0",
+    "@tauri-apps/api": "2.11.1",
     "husky": "9.1.7",
     "oxfmt": "^0.32.0",
     "oxlint": "^1.47.0",

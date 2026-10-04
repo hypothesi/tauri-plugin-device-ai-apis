@@ -17,6 +17,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 /// Access to the device-ai-apis APIs on desktop platforms.
 pub struct DeviceAiApis<R: Runtime> {
     inner: DeviceAi,
+    #[allow(dead_code)]
     app: AppHandle<R>,
 }
 
