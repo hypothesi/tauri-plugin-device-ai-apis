@@ -11,6 +11,7 @@ import FoundationModels
 
 // MARK: - Multimodal Extension for FoundationModels
 
+@available(iOS 26.0, *)
 extension Transcript {
     public struct ImageSegment: Sendable {
         public let data: Data
@@ -377,23 +378,6 @@ struct PluginError: Encodable {
         self.code = code
         self.message = message
         self.details = details
-    }
-}
-
-// Tauri's `Invoke.reject` takes a String; the plugin builds structured
-// PluginError values throughout. This overload JSON-encodes the structured
-// error so the JS side can parse `code`/`message`, falling back to the plain
-// message if encoding fails. Defined once here instead of changing every
-// reject call site.
-extension Tauri.Invoke {
-    func reject(_ error: PluginError) {
-        if let data = try? JSONEncoder().encode(error),
-           let json = String(data: data, encoding: .utf8)
-        {
-            reject(json)
-        } else {
-            reject(error.message)
-        }
     }
 }
 
@@ -816,7 +800,7 @@ class DeviceAiPlugin: Plugin {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 guard status == .authorized else {
-                    invoke.reject(self.permissionDenied("speechRecognition"))
+                    invoke.reject(permissionDenied("speechRecognition"))
                     return
                 }
 
@@ -829,7 +813,7 @@ class DeviceAiPlugin: Plugin {
                     try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
                     try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
                 } catch {
-                    invoke.reject(self.speechRecognitionFailed("Failed to configure audio session: \(error.localizedDescription)"))
+                    invoke.reject(speechRecognitionFailed("Failed to configure audio session: \(error.localizedDescription)"))
                     return
                 }
 
@@ -843,7 +827,7 @@ class DeviceAiPlugin: Plugin {
                 do {
                     try engine.start()
                 } catch {
-                    invoke.reject(self.speechRecognitionFailed("Failed to start audio engine: \(error.localizedDescription)"))
+                    invoke.reject(speechRecognitionFailed("Failed to start audio engine: \(error.localizedDescription)"))
                     return
                 }
 
@@ -1215,31 +1199,33 @@ class DeviceAiPlugin: Plugin {
 
     private func makeImageSegment(from source: ImageSourceArgs) -> Any? {
         #if canImport(FoundationModels)
-        if let base64 = source.base64 {
-            let cleaned: String
-            let mimeType: String
-            if base64.starts(with: "data:") {
-                if let commaIndex = base64.firstIndex(of: ",") {
-                    let header = String(base64[..<commaIndex])
-                    mimeType = header.replacingOccurrences(of: "data:", with: "").replacingOccurrences(of: ";base64", with: "")
-                    cleaned = String(base64[base64.index(after: commaIndex)...])
+        if #available(iOS 26.0, *) {
+            if let base64 = source.base64 {
+                let cleaned: String
+                let mimeType: String
+                if base64.starts(with: "data:") {
+                    if let commaIndex = base64.firstIndex(of: ",") {
+                        let header = String(base64[..<commaIndex])
+                        mimeType = header.replacingOccurrences(of: "data:", with: "").replacingOccurrences(of: ";base64", with: "")
+                        cleaned = String(base64[base64.index(after: commaIndex)...])
+                    } else {
+                        cleaned = base64
+                        mimeType = "image/jpeg"
+                    }
                 } else {
                     cleaned = base64
                     mimeType = "image/jpeg"
                 }
-            } else {
-                cleaned = base64
-                mimeType = "image/jpeg"
+                guard let data = Data(base64Encoded: cleaned) else { return nil }
+                return Transcript.ImageSegment(data: data, mimeType: mimeType)
+            } else if let bytes = source.bytes {
+                return Transcript.ImageSegment(data: Data(bytes), mimeType: "image/jpeg")
+            } else if let filePath = source.filePath {
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else { return nil }
+                let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
+                let mime = ext == "png" ? "image/png" : (ext == "webp" ? "image/webp" : "image/jpeg")
+                return Transcript.ImageSegment(data: data, mimeType: mime)
             }
-            guard let data = Data(base64Encoded: cleaned) else { return nil }
-            return Transcript.ImageSegment(data: data, mimeType: mimeType)
-        } else if let bytes = source.bytes {
-            return Transcript.ImageSegment(data: Data(bytes), mimeType: "image/jpeg")
-        } else if let filePath = source.filePath {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)) else { return nil }
-            let ext = URL(fileURLWithPath: filePath).pathExtension.lowercased()
-            let mime = ext == "png" ? "image/png" : (ext == "webp" ? "image/webp" : "image/jpeg")
-            return Transcript.ImageSegment(data: data, mimeType: mime)
         }
         #endif
         return nil
@@ -1276,7 +1262,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
         request.recognitionLevel = .accurate
         do {
             try requestHandler.perform([request])
-            let observations = request.results as? [VNRecognizedTextObservation] ?? []
+            let observations = request.results ?? []
             let lines = observations.compactMap { $0.topCandidates(1).first?.string }
             return lines.joined(separator: "\n")
         } catch {
@@ -1290,7 +1276,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
         let request = VNDetectBarcodesRequest()
         do {
             try requestHandler.perform([request])
-            let observations = request.results as? [VNBarcodeObservation] ?? []
+            let observations = request.results ?? []
             let payloads = observations.compactMap { $0.payloadStringValue }
             return payloads.joined(separator: ", ")
         } catch {
@@ -1459,7 +1445,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
         }
 
         #if canImport(Translation)
-        if #available(iOS 18.0, *) {
+        if #available(iOS 26.0, *) {
             let source = Locale.Language(identifier: args.from)
             let target = Locale.Language(identifier: args.to)
 
@@ -1519,7 +1505,7 @@ Respond ONLY with a valid JSON object strictly conforming to the following JSON 
         }
         #endif
 
-        invoke.reject(featureNotAvailable("translation requires iOS 18+"))
+        invoke.reject(featureNotAvailable("translation requires iOS 26+"))
     }
 
     // MARK: - LLM (FoundationModels)
