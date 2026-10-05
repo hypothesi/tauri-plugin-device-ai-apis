@@ -2,8 +2,11 @@ fn main() {
     // Declare custom cfg for FoundationModels SDK detection.
     println!("cargo::rustc-check-cfg=cfg(has_foundation_models)");
 
-    #[cfg(target_os = "macos")]
-    macos::init();
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os == "macos" {
+        #[cfg(target_os = "macos")]
+        macos::init();
+    }
 }
 
 #[cfg(target_os = "macos")]
